@@ -1,0 +1,201 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.uid == 'yZlWYVacbThKYgPnKgGJxAYCJIi2' ||
+        request.auth.token.admin == true
+      );
+    }
+
+    function optionalString(data, field, maxLength) {
+      return !(field in data) ||
+        (data[field] is string && data[field].size() <= maxLength);
+    }
+
+    function optionalBoolean(data, field) {
+      return !(field in data) || data[field] is bool;
+    }
+
+    function validProductImage(image) {
+      return (image is string
+          && image.size() <= 2048
+          && image.matches('https://.+'))
+        || (image is map
+          && image.keys().hasOnly(['url', 'alt', 'publicId'])
+          && image.keys().hasAll(['url'])
+          && image.url is string
+          && image.url.size() <= 2048
+          && image.url.matches('https://.+')
+          && optionalString(image, 'alt', 120)
+          && optionalString(image, 'publicId', 255));
+    }
+
+    function validProductImages(images) {
+      return images is list
+        && images.size() <= 8
+        && (images.size() <= 0 || validProductImage(images[0]))
+        && (images.size() <= 1 || validProductImage(images[1]))
+        && (images.size() <= 2 || validProductImage(images[2]))
+        && (images.size() <= 3 || validProductImage(images[3]))
+        && (images.size() <= 4 || validProductImage(images[4]))
+        && (images.size() <= 5 || validProductImage(images[5]))
+        && (images.size() <= 6 || validProductImage(images[6]))
+        && (images.size() <= 7 || validProductImage(images[7]));
+    }
+
+    function validProduct(data) {
+      return data.keys().hasOnly([
+          'name', 'slug', 'brand', 'model', 'category', 'sku', 'description',
+          'specifications', 'condition', 'price', 'availability', 'stockQuantity',
+          'warranty', 'images', 'featured', 'published', 'searchKeywords',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'name', 'slug', 'brand', 'model', 'category', 'sku', 'description',
+          'specifications', 'condition', 'price', 'availability', 'stockQuantity',
+          'warranty', 'images', 'featured', 'published', 'searchKeywords',
+          'createdAt', 'updatedAt'
+        ])
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 160
+        && data.slug is string
+        && data.slug.size() >= 1
+        && data.slug.size() <= 180
+        && data.description is string
+        && data.description.size() <= 5000
+        && data.condition in ['New', 'Refurbished', 'Used', 'Open box']
+        && data.published is bool
+        && data.featured is bool
+        && data.specifications is map
+        && data.specifications.size() <= 40
+        && validProductImages(data.images)
+        && optionalString(data, 'brand', 100)
+        && optionalString(data, 'model', 100)
+        && optionalString(data, 'category', 100)
+        && optionalString(data, 'sku', 100)
+        && optionalString(data, 'availability', 100)
+        && optionalString(data, 'warranty', 500)
+        && optionalString(data, 'searchKeywords', 1000)
+        && (data.price == null || (data.price is number && data.price >= 0))
+        && (data.stockQuantity == null ||
+          (data.stockQuantity is number && data.stockQuantity >= 0));
+    }
+
+    function validPublicSettings(data) {
+      return data.keys().hasOnly([
+          'publicPhone', 'publicEmail', 'whatsappNumber', 'address',
+          'businessHours', 'footerText', 'homepageHeadline', 'updatedAt',
+          'announcementText', 'announcementEnabled'
+        ])
+        && data.updatedAt == request.time
+        && optionalString(data, 'publicPhone', 40)
+        && optionalString(data, 'publicEmail', 254)
+        && optionalString(data, 'whatsappNumber', 15)
+        && optionalString(data, 'address', 250)
+        && optionalString(data, 'businessHours', 200)
+        && optionalString(data, 'footerText', 500)
+        && optionalString(data, 'homepageHeadline', 150)
+        && optionalString(data, 'announcementText', 240)
+        && optionalBoolean(data, 'announcementEnabled');
+    }
+
+    function validEnquiry() {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'name', 'phone', 'email', 'message', 'productId', 'productName',
+          'status', 'internalNotes', 'createdAt', 'updatedAt', 'serviceCategory',
+          'brand', 'model', 'preferredContactMethod'
+        ])
+        && data.keys().hasAll([
+          'name', 'phone', 'email', 'message', 'productId', 'productName',
+          'status', 'internalNotes', 'createdAt', 'updatedAt'
+        ])
+        && data.name is string
+        && data.name.size() >= 2
+        && data.name.size() <= 100
+        && data.phone is string
+        && data.phone.size() >= 7
+        && data.phone.size() <= 25
+        && data.email is string
+        && data.email.size() <= 254
+        && data.message is string
+        && data.message.size() >= 10
+        && data.message.size() <= 2000
+        && data.productId is string
+        && data.productId.size() <= 100
+        && data.productName is string
+        && data.productName.size() <= 150
+        && data.status == 'New'
+        && data.internalNotes == ''
+        && data.createdAt == request.time
+        && data.updatedAt == request.time
+        && optionalString(data, 'serviceCategory', 80)
+        && (!('serviceCategory' in data) || data.serviceCategory in [
+          'Computer Purchase Guidance', 'Hardware Enquiry', 'Upgrade Enquiry',
+          'Warranty Support', 'Other Enquiry'
+        ])
+        && optionalString(data, 'brand', 100)
+        && optionalString(data, 'model', 100)
+        && (!('preferredContactMethod' in data) ||
+          data.preferredContactMethod == '' ||
+          data.preferredContactMethod in ['Phone', 'Email', 'WhatsApp']);
+    }
+
+    match /products/{productId} {
+      allow get: if isAdmin() ||
+        (resource != null && resource.data.published == true);
+      allow list: if isAdmin() ||
+        (resource.data.published == true && request.query.limit <= 200);
+      allow create: if isAdmin()
+        && validProduct(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isAdmin()
+        && validProduct(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
+    match /enquiries/{enquiryId} {
+      allow create: if request.auth == null && validEnquiry();
+      allow get, list: if isAdmin();
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'internalNotes', 'updatedAt'])
+        && request.resource.data.status in [
+          'New', 'Contacted', 'In Progress', 'Resolved'
+        ]
+        && request.resource.data.internalNotes is string
+        && request.resource.data.internalNotes.size() <= 3000
+        && optionalString(request.resource.data, 'serviceCategory', 80)
+        && (!('serviceCategory' in request.resource.data) ||
+          request.resource.data.serviceCategory in [
+            'Computer Purchase Guidance', 'Hardware Enquiry', 'Upgrade Enquiry',
+            'Warranty Support', 'Other Enquiry'
+          ])
+        && optionalString(request.resource.data, 'brand', 100)
+        && optionalString(request.resource.data, 'model', 100)
+        && (!('preferredContactMethod' in request.resource.data) ||
+          request.resource.data.preferredContactMethod == '' ||
+          request.resource.data.preferredContactMethod in ['Phone', 'Email', 'WhatsApp'])
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow get: if settingId == 'publicSite';
+      allow list: if false;
+      allow create, update: if isAdmin()
+        && settingId == 'publicSite'
+        && validPublicSettings(request.resource.data);
+      allow delete: if isAdmin() && settingId == 'publicSite';
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

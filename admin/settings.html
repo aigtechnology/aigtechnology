@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings admin | AIG TECHNOLOGY</title>
+  <meta name="description" content="Configure AIG TECHNOLOGY public website information.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="../assets/css/site.css">
+</head>
+<body class="admin-body" data-admin-page="settings">
+  <header class="admin-header"><div class="container admin-header-inner"><a href="../index.html"><img src="../assets/images/aig-technology-logo.jpeg" alt="AIG TECHNOLOGY"></a><div>Signed in: <span data-admin-email></span> <button class="button button-secondary button-small" id="sign-out">Sign out</button></div></div></header>
+  <div id="admin-auth-status" class="container notice" style="margin-top:16px">Checking administrator access…</div>
+  <div id="admin-app" hidden>
+    <nav class="mobile-admin-nav admin-nav" aria-label="Admin navigation"><a href="index.html">Dashboard</a><a href="products.html">Products</a><a href="enquiries.html">Enquiries</a><a href="settings.html">Settings</a></nav>
+    <div class="admin-shell">
+      <aside class="admin-sidebar"><nav class="admin-nav"><a href="index.html">Dashboard</a><a href="products.html">Products</a><a href="enquiries.html">Enquiries</a><a href="settings.html">Settings</a><a href="../index.html">View website</a></nav></aside>
+      <main class="admin-main">
+        <p class="eyebrow">Website configuration</p><h1>Public settings</h1>
+        <p class="notice">Only add contact information and business details verified by AIG TECHNOLOGY. These values are publicly displayed.</p>
+        <p id="admin-message" class="form-status" role="status"></p>
+        <section class="panel">
+          <form id="settings-form">
+            <div class="form-grid">
+              <div class="field"><label for="publicPhone">Public phone number</label><input id="publicPhone" name="publicPhone" type="tel" maxlength="40"></div>
+              <div class="field"><label for="publicEmail">Public email address</label><input id="publicEmail" name="publicEmail" type="email" maxlength="254"></div>
+              <div class="field"><label for="whatsappNumber">WhatsApp number (country code, digits only)</label><input id="whatsappNumber" name="whatsappNumber" inputmode="numeric" maxlength="15"></div>
+              <div class="field"><label for="businessHours">Business hours</label><input id="businessHours" name="businessHours" maxlength="200"></div>
+              <div class="field full"><label for="address">Public address (optional)</label><input id="address" name="address" maxlength="250"></div>
+              <div class="field full"><label for="footerText">Footer description</label><textarea id="footerText" name="footerText" maxlength="500"></textarea></div>
+              <div class="field full"><label for="homepageHeadline">Homepage headline</label><input id="homepageHeadline" name="homepageHeadline" maxlength="150"></div>
+              <div class="field full"><label for="announcementText">Announcement banner text</label><input id="announcementText" name="announcementText" maxlength="240" placeholder="Welcome to AIG TECHNOLOGY — Reliable Computers, Refurbished Systems &amp; Quality Accessories."><small>Use verified business information only; do not add unconfirmed offers or delivery promises.</small></div>
+              <div class="field full"><label><input type="checkbox" name="announcementEnabled" style="width:auto;min-height:0;margin-right:8px">Show the announcement banner on public pages</label></div>
+            </div>
+            <button class="button" type="submit">Save settings</button>
+          </form>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script type="module" src="../assets/js/admin.js?v=20261025-retailer"></script>
+</body>
+</html>

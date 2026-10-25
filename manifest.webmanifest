@@ -1,0 +1,9 @@
+{
+  "name": "AIG TECHNOLOGY",
+  "short_name": "AIG TECHNOLOGY",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#173D8F",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

@@ -1,0 +1,12 @@
+# Local-only configuration or credentials
+.env
+.env.*
+service-account*.json
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Local tooling
+.firebase/
+.DS_Store
+Thumbs.db

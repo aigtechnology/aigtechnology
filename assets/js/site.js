@@ -10,7 +10,7 @@ let businessWhatsAppNumber = businessContactConfig.whatsappNumber;
 let revealObserver;
 
 const productCategories = [
-  "Refurbished Laptops", "Desktop Computers", "Mini PCs", "Keyboards and Mice",
+  "Desktop Computers", "Mini PCs", "Keyboards and Mice",
   "SSDs and Storage", "RAM and Components", "Computer Accessories"
 ];
 

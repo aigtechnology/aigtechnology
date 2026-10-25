@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" role="img" aria-label="A dark, cinematic illustration of a laptop and computer hardware">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" role="img" aria-label="A desktop computer monitor and tower with computer hardware">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#101114"/>
@@ -35,9 +35,15 @@
     <rect x="104" y="25" width="552" height="346" rx="8" fill="url(#screen)"/>
     <path d="M160 290c115-145 220-170 315-95 53 42 92 45 145 2v174H128z" fill="#101114" fill-opacity=".32"/>
     <path d="M260 110h240M260 142h168M260 174h210" stroke="#fff" stroke-opacity=".46" stroke-width="7" stroke-linecap="round"/>
-    <path d="m0 410 760 0 120 86c8 6 3 19-8 19H-110c-11 0-16-13-8-19z" fill="url(#metal)"/>
-    <path d="M320 419h120l25 22H295z" fill="#506779" opacity=".74"/>
-    <path d="M105 449h710" stroke="#eef6fb" stroke-opacity=".38" stroke-width="3"/>
+    <path d="M320 400h120v68H320z" fill="url(#metal)"/>
+    <path d="M245 468h270v32H245z" fill="url(#metal)"/>
+    <path d="M260 478h240" stroke="#eef6fb" stroke-opacity=".38" stroke-width="3"/>
+  </g>
+  <g transform="translate(1770 355)">
+    <rect width="150" height="330" rx="18" fill="#182736" stroke="#9fb1c1" stroke-opacity=".7" stroke-width="8"/>
+    <rect x="20" y="24" width="110" height="250" rx="8" fill="#263b4f"/>
+    <circle cx="75" cy="300" r="7" fill="#78cafa"/>
+    <path d="M44 56h62M44 76h62M44 96h62" stroke="#78cafa" stroke-opacity=".45" stroke-width="5" stroke-linecap="round"/>
   </g>
   <g opacity=".25" fill="#16A8E0">
     <circle cx="880" cy="310" r="3"/><circle cx="925" cy="350" r="2"/>

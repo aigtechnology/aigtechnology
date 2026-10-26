@@ -339,12 +339,12 @@ async function initProductDetails() {
         <h1>${escapeHtml(product.name)}</h1>
         <p class="product-meta">${[product.brand, product.model, product.sku ? `SKU ${product.sku}` : ""].filter(Boolean).map(escapeHtml).join(" · ")}</p>
         <p class="price">${product.price !== undefined && product.price !== null && product.price !== "" ? escapeHtml(formatPrice(product.price)) : '<span class="price-missing">Price on enquiry</span>'}</p>
-        <p>${escapeHtml(product.description || "Contact us for product details.")}</p>
+        ${specifications.length ? `<h2>Specifications</h2><dl class="spec-list">${specifications.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join("")}</dl>` : ""}
+        <p class="product-description">${escapeHtml(product.description || "Contact us for product details.")}</p>
         <p><strong>Availability:</strong> ${escapeHtml(product.availability || "Please enquire")}</p>
         ${product.warranty ? `<p><strong>Warranty:</strong> ${escapeHtml(product.warranty)}</p>` : ""}
         <a class="button" href="contact.html?product=${encodeURIComponent(product.id)}">Enquire about this product</a>
         ${productWhatsAppUrl(product) ? `<a class="button button-whatsapp" href="${escapeHtml(productWhatsAppUrl(product))}" target="_blank" rel="noopener noreferrer"><svg class="whatsapp-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4.2A8 8 0 1 1 20 11.5Z"/><path d="M8.2 7.4c-.4.2-.7.6-.7 1.1 0 4.2 3.4 7.6 7.6 7.6.5 0 .9-.3 1.1-.7l.5-1.2-2.2-1-1 .9a8 8 0 0 1-3.2-3.2l.9-1-1-2.2z"/></svg> Buy on WhatsApp</a>` : ""}
-        ${specifications.length ? `<h2>Specifications</h2><dl class="spec-list">${specifications.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join("")}</dl>` : ""}
       </div>
     </div>`;
     const mainImage = target.querySelector("[data-gallery-main]");

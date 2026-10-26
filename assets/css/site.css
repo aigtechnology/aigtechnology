@@ -206,6 +206,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--brand-blue); out
 .spec-list { display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px 16px; }
 .spec-list dt { color: var(--text-muted); }
 .spec-list dd { margin: 0; color: var(--text-primary); }
+.product-description { white-space: pre-wrap; overflow-wrap: anywhere; }
 .content-narrow { max-width: 840px; }
 .content-narrow h2 { margin-top: 32px; font-size: 1.5rem; }
 .content-narrow p, .content-narrow li { color: var(--text-secondary); }

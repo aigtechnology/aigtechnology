@@ -170,25 +170,31 @@ async function loadProducts() {
     });
     $("#clear-product-form").addEventListener("click", () => { form.reset(); form.elements.productId.value = ""; $("#product-form-title").textContent = "Add product"; });
     $("#upload-image").addEventListener("click", async () => {
-      const file = $("#product-image-file").files[0];
-      if (!file) return statusMessage(status, "Choose an image first.", true);
+      const input = $("#product-image-file");
+      const files = Array.from(input.files);
+      if (!files.length) return statusMessage(status, "Choose at least one image first.", true);
       const button = $("#upload-image");
       button.disabled = true;
       button.textContent = "Uploading…";
-      status.textContent = "Preparing Cloudinary upload…";
+      status.textContent = `Preparing to upload ${files.length} image${files.length === 1 ? "" : "s"}…`;
       status.dataset.state = "";
+      let uploaded = 0;
       try {
-        const image = await uploadProductImage(file, progress => {
-          status.textContent = `Uploading image… ${progress}%`;
-          status.dataset.state = "";
-        });
-        form.elements.images.value += `${form.elements.images.value ? "\n" : ""}${image.url} | ${image.alt} | ${image.publicId}`;
-        statusMessage(status, "Image uploaded. Save the product to store its image reference.");
+        for (const file of files) {
+          const image = await uploadProductImage(file, progress => {
+            status.textContent = `Uploading ${uploaded + 1} of ${files.length}: ${file.name} (${progress}%)`;
+            status.dataset.state = "";
+          });
+          form.elements.images.value += `${form.elements.images.value ? "\n" : ""}${image.url} | ${image.alt} | ${image.publicId}`;
+          uploaded += 1;
+        }
+        input.value = "";
+        statusMessage(status, `${uploaded} image${uploaded === 1 ? "" : "s"} uploaded. Save the product to store the image references.`);
       } catch (error) {
-        statusMessage(status, `Image upload failed: ${error.message}`, true);
+        statusMessage(status, `Uploaded ${uploaded} of ${files.length} images. Upload failed for ${files[uploaded].name}: ${error.message}`, true);
       } finally {
         button.disabled = false;
-        button.textContent = "Upload to Cloudinary";
+        button.textContent = "Upload selected images";
       }
     });
   }

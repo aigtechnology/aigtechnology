@@ -323,10 +323,17 @@ async function initProductDetails() {
       target.innerHTML = `<div class="empty-state">This product is no longer available. <a href="products.html">Browse current products</a>.</div>`;
       return;
     }
-    const image = Array.isArray(product.images) ? product.images[0]?.url || product.images[0] : "";
+    const images = Array.isArray(product.images) ? product.images.map(image => {
+      if (typeof image === "string") return { url: image, alt: product.name };
+      if (!image || typeof image.url !== "string") return null;
+      return { url: image.url, alt: image.alt || product.name };
+    }).filter(Boolean) : [];
     const specifications = product.specifications && typeof product.specifications === "object" ? Object.entries(product.specifications) : [];
     target.innerHTML = `<div class="detail-layout">
-      <div class="detail-photo">${image ? `<img data-product-image src="${escapeHtml(image)}" alt="${escapeHtml(product.images?.[0]?.alt || product.name)}">` : `<span class="product-placeholder">Product image not provided</span>`}</div>
+      <div class="detail-gallery">
+        <div class="detail-photo">${images.length ? `<img data-product-image data-gallery-main src="${escapeHtml(images[0].url)}" alt="${escapeHtml(images[0].alt)}">` : `<span class="product-placeholder">Product image not provided</span>`}</div>
+        ${images.length > 1 ? `<div class="detail-thumbnails" aria-label="More product images">${images.map((image, index) => `<button class="detail-thumbnail${index === 0 ? " is-selected" : ""}" type="button" data-gallery-index="${index}" aria-label="View image ${index + 1} of ${images.length}" aria-pressed="${index === 0}"><img data-product-image src="${escapeHtml(image.url)}" alt=""></button>`).join("")}</div>` : ""}
+      </div>
       <div>
         <span class="badge">${escapeHtml(product.condition || "Condition to be confirmed")}</span>
         <h1>${escapeHtml(product.name)}</h1>
@@ -340,6 +347,49 @@ async function initProductDetails() {
         ${specifications.length ? `<h2>Specifications</h2><dl class="spec-list">${specifications.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join("")}</dl>` : ""}
       </div>
     </div>`;
+    const mainImage = target.querySelector("[data-gallery-main]");
+    const thumbnails = [...target.querySelectorAll("[data-gallery-index]")];
+    let currentImageIndex = 0;
+    const showImage = index => {
+      const image = images[index];
+      if (!image || !mainImage) return;
+      const animateChange = index !== currentImageIndex && !reducedMotion && mainImage.src;
+      if (animateChange) {
+        target.querySelectorAll(".detail-photo__outgoing").forEach(previous => previous.remove());
+        const outgoingImage = mainImage.cloneNode();
+        outgoingImage.removeAttribute("data-gallery-main");
+        outgoingImage.removeAttribute("data-product-image");
+        outgoingImage.removeAttribute("id");
+        outgoingImage.className = "detail-photo__outgoing";
+        outgoingImage.setAttribute("aria-hidden", "true");
+        mainImage.parentElement.append(outgoingImage);
+        outgoingImage.addEventListener("animationend", () => outgoingImage.remove(), { once: true });
+        mainImage.classList.remove("gallery-entering");
+      }
+      currentImageIndex = index;
+      mainImage.src = image.url;
+      mainImage.alt = image.alt;
+      if (animateChange) {
+        void mainImage.offsetWidth;
+        mainImage.classList.add("gallery-entering");
+        mainImage.addEventListener("animationend", () => mainImage.classList.remove("gallery-entering"), { once: true });
+      }
+      thumbnails.forEach((thumbnail, thumbnailIndex) => {
+        const selected = thumbnailIndex === index;
+        thumbnail.classList.toggle("is-selected", selected);
+        thumbnail.setAttribute("aria-pressed", String(selected));
+      });
+    };
+    thumbnails.forEach(button => button.addEventListener("click", () => {
+      showImage(Number(button.dataset.galleryIndex));
+    }));
+    if (images.length > 1 && !reducedMotion) {
+      const gallery = target.querySelector(".detail-gallery");
+      window.setInterval(() => {
+        if (document.hidden || gallery.matches(":hover, :focus-within")) return;
+        showImage((currentImageIndex + 1) % images.length);
+      }, 4000);
+    }
     setupImageFallbacks(target);
     setupReveals(target);
   } catch (error) { showError(target, error); }

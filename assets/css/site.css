@@ -244,6 +244,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--brand-blue); out
 .service-enquiry-panel h2 { font-size: clamp(1.5rem, 3vw, 2rem); }
 .service-enquiry-panel .form-grid { gap: 0 20px; }
 .admin-contact-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.admin-category-add { display: flex; gap: 10px; }
+.admin-category-add .button { flex: 0 0 auto; }
 .admin-enquiry-message { min-width: 200px; max-width: 420px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .admin-main h1 { font-size: 2rem; }
 .admin-main .panel { padding: 22px; margin: 16px 0; }

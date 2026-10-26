@@ -17,6 +17,61 @@ service cloud.firestore {
       return !(field in data) || data[field] is bool;
     }
 
+    function validCategoryAt(categories, index) {
+      return categories.size() <= index ||
+        (categories[index] is string
+          && categories[index].size() >= 1
+          && categories[index].size() <= 80);
+    }
+
+    function validCategories(data) {
+      return !('categories' in data) ||
+        (data.categories is list
+          && data.categories.size() <= 30
+          && data.categories.toSet().size() == data.categories.size()
+          && validCategoryAt(data.categories, 0)
+          && validCategoryAt(data.categories, 1)
+          && validCategoryAt(data.categories, 2)
+          && validCategoryAt(data.categories, 3)
+          && validCategoryAt(data.categories, 4)
+          && validCategoryAt(data.categories, 5)
+          && validCategoryAt(data.categories, 6)
+          && validCategoryAt(data.categories, 7)
+          && validCategoryAt(data.categories, 8)
+          && validCategoryAt(data.categories, 9)
+          && validCategoryAt(data.categories, 10)
+          && validCategoryAt(data.categories, 11)
+          && validCategoryAt(data.categories, 12)
+          && validCategoryAt(data.categories, 13)
+          && validCategoryAt(data.categories, 14)
+          && validCategoryAt(data.categories, 15)
+          && validCategoryAt(data.categories, 16)
+          && validCategoryAt(data.categories, 17)
+          && validCategoryAt(data.categories, 18)
+          && validCategoryAt(data.categories, 19)
+          && validCategoryAt(data.categories, 20)
+          && validCategoryAt(data.categories, 21)
+          && validCategoryAt(data.categories, 22)
+          && validCategoryAt(data.categories, 23)
+          && validCategoryAt(data.categories, 24)
+          && validCategoryAt(data.categories, 25)
+          && validCategoryAt(data.categories, 26)
+          && validCategoryAt(data.categories, 27)
+          && validCategoryAt(data.categories, 28)
+          && validCategoryAt(data.categories, 29));
+    }
+
+    function validProductCategory(category) {
+      let settings = get(
+        /databases/$(database)/documents/settings/publicSite
+      ).data;
+      return category is string
+        && category.size() >= 1
+        && category.size() <= 80
+        && settings.categories is list
+        && settings.categories.hasAny([category]);
+    }
+
     function validProductImage(image) {
       return (image is string
           && image.size() <= 2048
@@ -73,7 +128,7 @@ service cloud.firestore {
         && validProductImages(data.images)
         && optionalString(data, 'brand', 100)
         && optionalString(data, 'model', 100)
-        && optionalString(data, 'category', 100)
+        && validProductCategory(data.category)
         && optionalString(data, 'sku', 100)
         && optionalString(data, 'availability', 100)
         && optionalString(data, 'warranty', 500)
@@ -87,9 +142,10 @@ service cloud.firestore {
       return data.keys().hasOnly([
           'publicPhone', 'publicEmail', 'whatsappNumber', 'address',
           'businessHours', 'footerText', 'homepageHeadline', 'updatedAt',
-          'announcementText', 'announcementEnabled'
+          'announcementText', 'announcementEnabled', 'categories'
         ])
         && data.updatedAt == request.time
+        && validCategories(data)
         && optionalString(data, 'publicPhone', 40)
         && optionalString(data, 'publicEmail', 254)
         && optionalString(data, 'whatsappNumber', 15)

@@ -15,7 +15,7 @@ The site is a static GitHub Pages application. Firebase web configuration is pub
 
 - `products/{productId}`: catalogue entries; public reads are limited to published items.
 - `enquiries/{enquiryId}`: public create only with bounded fields; reads and changes are admin-only. Internal notes are never exposed to public clients.
-- `settings/publicSite`: public contact and footer settings. Do not place private settings in this document; all its fields can be read by visitors.
+- `settings/publicSite`: public contact, footer, and product category settings. Product categories are shared with the public navigation, homepage category cards, and catalogue filter; rules allow up to 30 unique category names, each 1–80 characters. Do not place private settings in this document; all its fields can be read by visitors.
 
 Public enquiry writes are constrained by Firestore rules, but a static site cannot provide robust rate limiting or bot detection. The honeypot and input validation are only basic abuse mitigations. Consider a server-side function or other abuse-protection layer before broad public use.
 
@@ -23,7 +23,7 @@ The site provides WhatsApp click-to-chat via `https://wa.me/918511693405`. It op
 
 ## Verify Firestore permissions
 
-The site does not require Node.js or a build step. Review the rules in `firebase/firestore.rules` and publish them in Firebase Console → **Firestore Database → Rules**. Use Firebase Console's rules playground or a dedicated test project to verify that public users can read published products and cannot create, change, or delete products; non-admins cannot read enquiries; and the authorized administrator can manage products and enquiries. Do not weaken the rules to make an operation succeed.
+The site does not require Node.js or a build step. Review the rules in `firebase/firestore.rules` and publish them in Firebase Console → **Firestore Database → Rules**. Use Firebase Console's rules playground or a dedicated test project to verify that public users can read published products and cannot create, change, or delete products; non-admins cannot read enquiries; and the authorized administrator can manage products, enquiries, public settings, and the bounded product category list. Do not weaken the rules to make an operation succeed.
 
 ## Assign administrator access
 

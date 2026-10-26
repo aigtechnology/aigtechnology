@@ -9,7 +9,7 @@ A lightweight HTML, CSS, and vanilla JavaScript site designed for GitHub Pages. 
 - The homepage hero uses a local video at `assets/videos/aig-technology-hero.mp4` when supplied and otherwise falls back to the included poster illustration. Reduced-motion settings skip video playback.
 - Firebase-backed product listings and enquiries, with an authenticated admin area for products, enquiries, and public settings.
 - Cloudinary multi-image uploads using a browser-only unsigned preset; admins can select and upload multiple product images in one action. This keeps the website static but means the preset is public.
-- Admin-editable announcement banner, product-category navigation, WhatsApp product enquiry links, and a service-enquiry workflow managed alongside existing admin enquiries.
+- Admin-managed product categories shared by the product form, catalogue filters, homepage category cards, and navigation; announcement banner, WhatsApp product enquiry links, and a service-enquiry workflow managed alongside existing admin enquiries.
 
 ## Local preview
 

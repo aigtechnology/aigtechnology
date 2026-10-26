@@ -9,10 +9,47 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matc
 let businessWhatsAppNumber = businessContactConfig.whatsappNumber;
 let revealObserver;
 
-const productCategories = [
+const defaultProductCategories = [
   "Desktop Computers", "Mini PCs", "Keyboards and Mice",
   "SSDs and Storage", "RAM and Components", "Computer Accessories"
 ];
+let productCategories = defaultProductCategories;
+
+function renderProductCategories(categories) {
+  productCategories = [...new Set(categories
+    .map(category => typeof category === "string" ? category.trim() : "")
+    .filter(Boolean))];
+  const menu = document.querySelector(".nav-products .nav-dropdown");
+  if (menu) {
+    menu.replaceChildren(...productCategories.map(category => {
+      const link = document.createElement("a");
+      link.href = `products.html?category=${encodeURIComponent(category)}`;
+      link.textContent = category;
+      return link;
+    }));
+  }
+  const grid = document.querySelector(".category-grid");
+  if (grid) {
+    grid.replaceChildren(...productCategories.map(category => {
+      const link = document.createElement("a");
+      link.className = "category-card";
+      link.href = `products.html?category=${encodeURIComponent(category)}`;
+      const mark = document.createElement("span");
+      mark.className = "category-card__mark";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = category.split(/\s+/).map(word => word[0]).join("").slice(0, 3).toUpperCase();
+      const label = document.createElement("span");
+      label.className = "category-card__label";
+      label.textContent = category;
+      const arrow = document.createElement("span");
+      arrow.className = "category-card__arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.textContent = "→";
+      link.append(mark, label, arrow);
+      return link;
+    }));
+  }
+}
 
 function setupAnnouncement() {
   const header = document.querySelector(".site-header");
@@ -251,6 +288,7 @@ async function loadProductGrid(container, options = {}) {
 }
 
 async function initProducts() {
+  await settingsInitialization;
   const grid = byId("product-grid");
   if (!grid) return;
   const products = await loadProductGrid(grid);
@@ -277,9 +315,9 @@ async function initProducts() {
     setupReveals(grid);
   };
   const distinct = key => [...new Set(products.map(item => item[key]).filter(Boolean))].sort();
-  const categories = [...new Map(products
+  const categories = [...new Map([...productCategories, ...products
     .map(product => String(product.category || "").trim())
-    .filter(Boolean)
+  ].filter(Boolean)
     .map(value => [value.toLowerCase(), value])).values()].sort((a, b) => a.localeCompare(b));
   for (const [select, values, label] of [[category, categories, "All categories"], [brand, distinct("brand"), "All brands"], [condition, distinct("condition"), "All conditions"]]) {
     if (!select) continue;
@@ -516,6 +554,9 @@ async function initSettings() {
   } catch (error) {
     console.warn("Public website settings could not be loaded:", error);
   }
+  renderProductCategories(Array.isArray(settings.categories) && settings.categories.length
+    ? settings.categories
+    : defaultProductCategories);
   businessWhatsAppNumber = String(settings.whatsappNumber || businessContactConfig.whatsappNumber || "").replace(/\D/g, "");
   document.querySelectorAll('a[href^="https://wa.me/"]').forEach(link => {
     const url = new URL(link.href);
@@ -565,7 +606,10 @@ setupNavigation();
 setupHomeHero();
 setupReveals();
 setupWhatsAppContact(businessWhatsAppNumber);
-initSettings().catch(error => console.error("Public settings initialization failed:", error));
+const settingsInitialization = initSettings().catch(error => {
+  renderProductCategories(defaultProductCategories);
+  console.error("Public settings initialization failed:", error);
+});
 initProducts();
 initProductDetails();
 initContact();

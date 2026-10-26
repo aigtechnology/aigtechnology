@@ -10,6 +10,10 @@ const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, ch => ({ "&"
 const dateText = value => value?.toDate ? value.toDate().toLocaleString() : "—";
 const statusMessage = (node, text, error = false) => { node.textContent = text; node.dataset.state = error ? "error" : "success"; };
 const show = (node, text) => { node.textContent = text; };
+const defaultProductCategories = [
+  "Desktop Computers", "Mini PCs", "Keyboards and Mice",
+  "SSDs and Storage", "RAM and Components", "Computer Accessories"
+];
 
 function goLogin() { location.href = "login.html"; }
 
@@ -128,12 +132,28 @@ async function loadProducts() {
   const form = $("#product-form");
   const status = $("#admin-message");
   const list = $("#product-list");
-  const products = await adminListProducts();
+  const [products, settings] = await Promise.all([adminListProducts(), readAdminSettings()]);
+  const hasConfiguredCategories = Array.isArray(settings.categories) && settings.categories.length > 0;
+  const configuredCategories = hasConfiguredCategories ? settings.categories : defaultProductCategories;
+  const categories = [...new Map([...configuredCategories, ...products.map(product => product.category)]
+    .map(category => String(category || "").trim())
+    .filter(Boolean)
+    .map(category => [category.toLowerCase(), category])).values()].sort((a, b) => a.localeCompare(b));
+  if (!hasConfiguredCategories || categories.some(category => !configuredCategories.some(configured =>
+    typeof configured === "string" && configured.trim().toLowerCase() === category.toLowerCase()
+  ))) {
+    await savePublicSettings({ categories });
+  }
+  const categorySelect = form.elements.category;
+  const selectedCategory = categorySelect.value;
+  categorySelect.innerHTML = `<option value="">Select category</option>${categories.map(category => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join("")}`;
+  if (categories.includes(selectedCategory)) categorySelect.value = selectedCategory;
   list.innerHTML = products.map(product => `<tr><td>${escapeHtml(product.name)}</td><td>${escapeHtml(product.category)}</td><td>${escapeHtml(product.price ?? "On enquiry")}</td><td>${product.published ? "Published" : "Draft"}</td><td><div class="admin-actions"><button class="button button-secondary button-small" type="button" data-edit="${escapeHtml(product.id)}">Edit</button><button class="button button-small" type="button" data-delete="${escapeHtml(product.id)}">Delete</button></div></td></tr>`).join("") || `<tr><td colspan="5">No products yet. Add a product using the form.</td></tr>`;
   list.querySelectorAll("[data-edit]").forEach(button => button.addEventListener("click", () => {
     const product = products.find(item => item.id === button.dataset.edit);
     if (!product) return;
-    for (const key of ["name", "slug", "brand", "model", "category", "sku", "description", "condition", "price", "availability", "stockQuantity", "warranty"]) form.elements[key].value = product[key] ?? "";
+    for (const key of ["name", "slug", "brand", "model", "sku", "description", "condition", "price", "availability", "stockQuantity", "warranty"]) form.elements[key].value = product[key] ?? "";
+    categorySelect.value = categories.find(category => category.toLowerCase() === String(product.category || "").trim().toLowerCase()) || "";
     form.elements.specifications.value = Object.entries(product.specifications || {}).map(([key, value]) => `${key}: ${value}`).join("\n");
     form.elements.images.value = (product.images || []).map(image => `${image.url || image}${image.alt ? ` | ${image.alt}` : ""}${image.publicId ? ` | ${image.publicId}` : ""}`).join("\n");
     form.elements.featured.checked = Boolean(product.featured);
@@ -157,6 +177,7 @@ async function loadProducts() {
       try {
         const data = productFormData(form);
         if (!data.name || !data.slug || !data.category || !data.condition) throw new Error("Name, slug, category, and condition are required.");
+        if (![...categorySelect.options].some(option => option.value.toLowerCase() === data.category.toLowerCase())) throw new Error("Choose a category from the category list.");
         if (data.price !== null && (!Number.isFinite(data.price) || data.price < 0)) throw new Error("Enter a valid non-negative price.");
         const id = form.elements.productId.value;
         await saveProduct(id, data);
@@ -169,6 +190,34 @@ async function loadProducts() {
       finally { button.disabled = false; }
     });
     $("#clear-product-form").addEventListener("click", () => { form.reset(); form.elements.productId.value = ""; $("#product-form-title").textContent = "Add product"; });
+    $("#add-category").addEventListener("click", async () => {
+      const input = $("#new-category");
+      const category = input.value.trim();
+      if (!category) return statusMessage(status, "Enter a category name.", true);
+      if (category.length > 80) return statusMessage(status, "Category names must be 80 characters or fewer.", true);
+      const existing = [...categorySelect.options].map(option => option.value).filter(Boolean);
+      if (existing.some(item => item.toLowerCase() === category.toLowerCase())) {
+        categorySelect.value = existing.find(item => item.toLowerCase() === category.toLowerCase());
+        return statusMessage(status, "That category already exists.");
+      }
+      if (existing.length >= 30) return statusMessage(status, "You can add up to 30 product categories.", true);
+      const button = $("#add-category");
+      button.disabled = true;
+      try {
+        await savePublicSettings({ categories: [...existing, category] });
+        const option = document.createElement("option");
+        option.value = category;
+        option.textContent = category;
+        categorySelect.append(option);
+        categorySelect.value = category;
+        input.value = "";
+        statusMessage(status, "Category added. It is now available in the website navigation and catalogue filters.");
+      } catch (error) {
+        statusMessage(status, `Could not add category: ${error.message}`, true);
+      } finally {
+        button.disabled = false;
+      }
+    });
     $("#upload-image").addEventListener("click", async () => {
       const input = $("#product-image-file");
       const files = Array.from(input.files);

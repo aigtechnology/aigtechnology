@@ -8,8 +8,12 @@ const isLocalFrontend = locationObject?.protocol === "http:"
 const derivedLocalApiUrl = isLocalFrontend
   ? `${locationObject.protocol}//${localFrontendHost}:8000/api`
   : "";
+const derivedPreviewApiUrl = locationObject?.protocol === "https:"
+  && locationObject?.hostname === "preview.aigtechnology.in"
+  ? "https://api-preview.aigtechnology.in/api"
+  : "";
 
-export const API_BASE_URL = (configuredApiUrl || derivedLocalApiUrl).replace(/\/+$/, "");
+export const API_BASE_URL = (configuredApiUrl || derivedLocalApiUrl || derivedPreviewApiUrl).replace(/\/+$/, "");
 
 if (API_BASE_URL && !isLocalFrontend) {
   const parsedApiUrl = new URL(API_BASE_URL);

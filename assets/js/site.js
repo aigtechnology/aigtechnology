@@ -1,10 +1,11 @@
 import { getProductById, getProducts, getPublicSettings, submitEnquiry, submitServiceEnquiry } from "./firestore.js?v=20261025-retailer";
 import { isFirebaseConfigured } from "./firebase-client.js";
 import { businessContactConfig } from "./firebase-config.js";
+import { addCartItem, cartItemCount } from "./cart-store.js";
 
 const byId = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
-const formatPrice = value => Number.isFinite(Number(value)) ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number(value)) : "";
+const formatPrice = value => Number.isFinite(Number(value)) ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(Number(value)) : "";
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let businessWhatsAppNumber = businessContactConfig.whatsappNumber;
 let revealObserver;
@@ -114,6 +115,26 @@ function setupNavigation() {
     ["Hardware enquiries", "services.html#hardware-guidance"],
     ["Warranty information", "services.html#warranty-information"]
   ]);
+  if (!nav.querySelector('a[href="cart.html"]')) {
+    const cartLink = document.createElement("a");
+    cartLink.href = "cart.html";
+    cartLink.innerHTML = 'Cart <span class="cart-count" id="cart-count" aria-label="items in cart">0</span>';
+    const productsGroup = nav.querySelector(".nav-products");
+    (productsGroup || nav.lastElementChild).after(cartLink);
+  }
+  const refreshCartBadge = () => {
+    const badge = byId("cart-count");
+    if (!badge) return;
+    try {
+      badge.textContent = String(cartItemCount());
+    } catch (error) {
+      badge.textContent = "!";
+      badge.title = error.message;
+      console.error("Could not read the shopping cart:", error);
+    }
+  };
+  refreshCartBadge();
+  window.addEventListener("aig-cart-updated", refreshCartBadge);
   nav.querySelectorAll(".nav-products, .nav-services").forEach(group => {
     document.addEventListener("click", event => {
       if (group.contains(event.target)) return;
@@ -187,6 +208,35 @@ function productWhatsAppUrl(product) {
   return `https://wa.me/${number}?text=${encodeURIComponent(details.join("\n"))}`;
 }
 
+function cartButton(product) {
+  if (!product.sku || Number(product.price) <= 0 || Number(product.stockQuantity) <= 0) return "";
+  const image = Array.isArray(product.images) ? product.images[0]?.url || product.images[0] : "";
+  const attributes = `data-sku="${escapeHtml(product.sku)}" data-name="${escapeHtml(product.name)}"
+    data-image="${escapeHtml(typeof image === "string" ? image : "")}"`;
+  return `<button class="button button-small" type="button" data-add-cart ${attributes}>Add to cart</button>
+    <button class="button button-small button-buy-now" type="button" data-buy-now ${attributes}>Buy now</button>`;
+}
+
+function setupCartActions(root) {
+  root.querySelectorAll("[data-add-cart], [data-buy-now]").forEach(button => button.addEventListener("click", () => {
+    try {
+      addCartItem({
+        sku: button.dataset.sku,
+        name: button.dataset.name,
+        image: button.dataset.image
+      });
+      if (button.hasAttribute("data-buy-now")) {
+        window.location.href = "checkout.html";
+      } else {
+        button.textContent = "Added to cart";
+      }
+    } catch (error) {
+      button.textContent = error.message;
+      button.setAttribute("aria-label", error.message);
+    }
+  }));
+}
+
 function setupWhatsAppContact(number) {
   const digits = String(number || "").replace(/\D/g, "");
   if (digits.length < 8 || digits.length > 15 || !document.querySelector(".site-footer")) return;
@@ -253,6 +303,7 @@ function productCard(product) {
       <p class="price">${product.price !== undefined && product.price !== null && product.price !== "" ? escapeHtml(formatPrice(product.price)) : '<span class="price-missing">Price on enquiry</span>'}</p>
       <p class="product-availability">${escapeHtml(product.availability || "Availability confirmed by enquiry")}</p>
       <div class="product-actions">
+        ${cartButton(product)}
         <a class="button button-small" href="contact.html?product=${encodeURIComponent(product.id)}">Enquire Now <span class="product-card__actions-icon" aria-hidden="true">→</span></a>
         <a class="button button-secondary button-small" href="product.html?id=${encodeURIComponent(product.id)}">View Details</a>
         ${whatsappUrl ? `<a class="button button-whatsapp button-small" href="${escapeHtml(whatsappUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Enquire about ${escapeHtml(product.name)} on WhatsApp"><svg class="whatsapp-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4.2A8 8 0 1 1 20 11.5Z"/><path d="M8.2 7.4c-.4.2-.7.6-.7 1.1 0 4.2 3.4 7.6 7.6 7.6.5 0 .9-.3 1.1-.7l.5-1.2-2.2-1-1 .9a8 8 0 0 1-3.2-3.2l.9-1-1-2.2z"/></svg> Buy on WhatsApp</a>` : ""}
@@ -279,6 +330,7 @@ async function loadProductGrid(container, options = {}) {
     const products = await getProducts(options);
     container.innerHTML = products.length ? products.map(productCard).join("") : `<div class="empty-state">No published products are available yet. Please check back later or contact us.</div>`;
     setupImageFallbacks(container);
+    setupCartActions(container);
     setupReveals(container);
     return products;
   } catch (error) {
@@ -312,6 +364,7 @@ async function initProducts() {
     if (sort?.value === "price-desc") list.sort((a, b) => Number(b.price ?? -Infinity) - Number(a.price ?? -Infinity));
     grid.innerHTML = list.length ? list.map(productCard).join("") : `<div class="empty-state">No products match these filters.</div>`;
     setupImageFallbacks(grid);
+    setupCartActions(grid);
     setupReveals(grid);
   };
   const distinct = key => [...new Set(products.map(item => item[key]).filter(Boolean))].sort();
@@ -381,11 +434,15 @@ async function initProductDetails() {
         <p class="product-description">${escapeHtml(product.description || "Contact us for product details.")}</p>
         <p><strong>Availability:</strong> ${escapeHtml(product.availability || "Please enquire")}</p>
         ${product.warranty ? `<p><strong>Warranty:</strong> ${escapeHtml(product.warranty)}</p>` : ""}
-        <a class="button" href="contact.html?product=${encodeURIComponent(product.id)}">Enquire about this product</a>
-        ${productWhatsAppUrl(product) ? `<a class="button button-whatsapp" href="${escapeHtml(productWhatsAppUrl(product))}" target="_blank" rel="noopener noreferrer"><svg class="whatsapp-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4.2A8 8 0 1 1 20 11.5Z"/><path d="M8.2 7.4c-.4.2-.7.6-.7 1.1 0 4.2 3.4 7.6 7.6 7.6.5 0 .9-.3 1.1-.7l.5-1.2-2.2-1-1 .9a8 8 0 0 1-3.2-3.2l.9-1-1-2.2z"/></svg> Buy on WhatsApp</a>` : ""}
+        <div class="product-actions product-detail-actions">
+          ${cartButton(product)}
+          <a class="button button-secondary" href="contact.html?product=${encodeURIComponent(product.id)}">Enquire about this product</a>
+          ${productWhatsAppUrl(product) ? `<a class="button button-whatsapp" href="${escapeHtml(productWhatsAppUrl(product))}" target="_blank" rel="noopener noreferrer"><svg class="whatsapp-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4.2A8 8 0 1 1 20 11.5Z"/><path d="M8.2 7.4c-.4.2-.7.6-.7 1.1 0 4.2 3.4 7.6 7.6 7.6.5 0 .9-.3 1.1-.7l.5-1.2-2.2-1-1 .9a8 8 0 0 1-3.2-3.2l.9-1-1-2.2z"/></svg> Buy on WhatsApp</a>` : ""}
+        </div>
       </div>
     </div>`;
     const mainImage = target.querySelector("[data-gallery-main]");
+    setupCartActions(target);
     const thumbnails = [...target.querySelectorAll("[data-gallery-index]")];
     let currentImageIndex = 0;
     const showImage = index => {

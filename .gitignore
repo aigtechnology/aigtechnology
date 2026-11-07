@@ -1,6 +1,7 @@
 # Local-only configuration or credentials
 .env
 .env.*
+!backend/.env.example
 service-account*.json
 *service-account*.json
 *firebase-adminsdk*.json
@@ -12,3 +13,7 @@ ui-debug.log
 .firebase/
 .DS_Store
 Thumbs.db
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/

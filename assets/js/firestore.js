@@ -71,11 +71,24 @@ export async function adminListProducts() {
   return snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
 }
 
+export async function adminListCatalogProductsForImport() {
+  const snapshot = await getDocs(query(collection(requireDatabase(), "products"), limit(1000)));
+  return snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+}
+
 export async function saveProduct(id, data) {
   const database = requireDatabase();
   const payload = { ...data, updatedAt: serverTimestamp() };
   if (id) return updateDoc(doc(database, "products", id), payload);
   return addDoc(collection(database, "products"), { ...payload, createdAt: serverTimestamp() });
+}
+
+export async function updateProductCheckoutFields(id, { sku, stockQuantity }) {
+  await updateDoc(doc(requireDatabase(), "products", id), {
+    sku,
+    stockQuantity,
+    updatedAt: serverTimestamp()
+  });
 }
 
 export async function removeProduct(id) {

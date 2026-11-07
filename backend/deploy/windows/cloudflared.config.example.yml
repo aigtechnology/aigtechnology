@@ -1,0 +1,9 @@
+tunnel: REPLACE_WITH_EXISTING_TUNNEL_UUID
+credentials-file: C:\ProgramData\cloudflared\REPLACE_WITH_TUNNEL_UUID.json
+
+ingress:
+  - hostname: api.aigtechnology.in
+    service: http://127.0.0.1:8000
+  - hostname: admin.aigtechnology.in
+    service: http://127.0.0.1:8080
+  - service: http_status:404

@@ -235,6 +235,26 @@ input:focus, textarea:focus, select:focus { border-color: var(--brand-blue); out
 .content-narrow { max-width: 840px; }
 .content-narrow h2 { margin-top: 32px; font-size: 1.5rem; }
 .content-narrow p, .content-narrow li { color: var(--text-secondary); }
+.form-panel .notice { margin: 0 0 20px; font-size: .92rem; }
+.form-panel .notice a { color: inherit; }
+.form-panel small { display: block; margin-top: 6px; color: var(--text-muted); font-size: .84rem; }
+.dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); align-items: start; gap: 22px; }
+.dashboard-grid .panel { padding: 24px; }
+.dashboard-grid .panel h2 { font-size: 1.3rem; }
+.dashboard-grid .panel p:last-of-type { margin-bottom: 0; }
+.dashboard-grid .button { margin: 12px 8px 0 0; }
+.purchase-records { margin: 18px 0 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+.purchase-record { padding: 16px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--background-secondary); overflow-wrap: anywhere; }
+.purchase-record__title { margin: 0 0 10px; color: var(--brand-navy); font-weight: 700; }
+.purchase-record__meta { display: grid; grid-template-columns: minmax(110px, auto) 1fr; gap: 4px 16px; margin: 0; font-size: .92rem; }
+.purchase-record__meta dt { color: var(--text-muted); }
+.purchase-record__meta dd { margin: 0; }
+.purchase-meta { margin: 0 0 4px; color: var(--text-secondary); font-size: .92rem; }
+@media (max-width: 720px) {
+  .dashboard-grid { grid-template-columns: 1fr; }
+  .purchase-record__meta { grid-template-columns: 1fr; }
+  .purchase-record__meta dd { margin-bottom: 8px; }
+}
 .empty-state, .loading-state { grid-column: 1 / -1; padding: 28px; text-align: center; border: 1px dashed var(--border-color); border-radius: var(--radius-md); color: var(--text-secondary); background: var(--background-secondary); overflow-wrap: anywhere; }
 .loading-state::after { display: block; width: 56px; height: 3px; margin: 14px auto 0; border-radius: 999px; background: linear-gradient(90deg, var(--brand-blue), #cbeafa, var(--brand-blue)); background-size: 200% 100%; content: ""; animation: loading-sheen var(--motion-duration-shimmer) linear infinite; }
 .loading-skeleton { height: 205px; border-radius: var(--radius-md); background: linear-gradient(90deg, #f1f5f8 20%, #e5eff5 40%, #f1f5f8 60%); background-size: 220% 100%; animation: loading-sheen var(--motion-duration-shimmer) ease-in-out infinite; }

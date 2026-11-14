@@ -1,5 +1,5 @@
 export const icons = {
-  grid: "▦", orders: "▤", returns: "↩", inventory: "▥", finance: "₹", analytics: "◔", bell: "●", settings: "⚙"
+  grid: "▦", orders: "▤", returns: "↩", inventory: "▥", finance: "₹", analytics: "◔", bell: "●", settings: "⚙", purchases: "▧"
 };
 
 export function escapeHtml(value) {
@@ -21,6 +21,7 @@ export function navigation(active = "dashboard") {
     ${item("settings", "Settings", icons.settings, "settings.html")}
     <div class="admin-nav-section">Website</div>
     ${item("online-orders", "Online Razorpay Orders", icons.finance, "online-orders.html")}
+    ${item("purchases", "Offline Purchases", icons.purchases, "purchases.html")}
     ${item("service-requests", "Service Requests", icons.settings, "service-requests.html")}
     ${item("site-admin", "Product & Site Management", icons.settings, "index.html")}
   </nav>`;

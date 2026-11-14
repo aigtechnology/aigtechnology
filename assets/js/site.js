@@ -4,6 +4,7 @@ import { uploadProductImage } from "./cloudinary.js";
 import { isFirebaseConfigured } from "./firebase-client.js";
 import { businessContactConfig } from "./firebase-config.js";
 import { addCartItem, cartItemCount } from "./cart-store.js";
+import { readVerifiedPurchase } from "./purchase-verification.js?v=20261114-purchase";
 
 const byId = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
@@ -495,6 +496,15 @@ async function initProductDetails() {
 async function initServiceEnquiry() {
   const form = byId("service-enquiry-form");
   if (!form) return;
+  const verifiedPurchase = readVerifiedPurchase();
+  if (!verifiedPurchase?.verified) {
+    window.location.replace("customer-login.html?return=services.html");
+    return;
+  }
+  const gate = document.createElement("p");
+  gate.className = "notice notice-success";
+  gate.textContent = `Verified purchase: ${verifiedPurchase.reference} (${verifiedPurchase.source}).`;
+  form.before(gate);
   form.addEventListener("submit", async event => {
     event.preventDefault();
     const status = byId("service-enquiry-status");
@@ -510,18 +520,34 @@ async function initServiceEnquiry() {
       brandModel: String(fields.get("brandModel") || "").trim(),
       description: String(fields.get("description") || "").trim(),
       address: String(fields.get("address") || "").trim(),
-      preferredContactTime: String(fields.get("preferredContactTime") || "").trim()
+      preferredContactTime: String(fields.get("preferredContactTime") || "").trim(),
+      purchaseType: String(fields.get("purchaseType") || "").trim(),
+      purchaseReference: String(fields.get("purchaseReference") || "").trim(),
+      purchaseMobile: String(fields.get("purchaseMobile") || "").replace(/\D/g, "")
     };
+    const contactDigits = data.phone.replace(/\D/g, "");
     if (data.customerName.length < 2 || data.customerName.length > 100) {
       status.textContent = "Enter your name (2–100 characters).";
       status.dataset.state = "error";
       form.elements.name.focus();
       return;
     }
-    if (data.phone.replace(/\D/g, "").length < 7 || data.phone.length > 25) {
-      status.textContent = "Enter a valid phone number.";
+    if (!/^[6-9]\d{9}$/.test(contactDigits)) {
+      status.textContent = "Enter a valid 10-digit Indian mobile number for contact.";
       status.dataset.state = "error";
       form.elements.phone.focus();
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(data.purchaseMobile)) {
+      status.textContent = "Enter the 10-digit mobile number registered with that purchase.";
+      status.dataset.state = "error";
+      form.elements.purchaseMobile.focus();
+      return;
+    }
+    if (!data.purchaseReference) {
+      status.textContent = "Enter the invoice or order number for this purchase.";
+      status.dataset.state = "error";
+      form.elements.purchaseReference.focus();
       return;
     }
     if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
@@ -530,7 +556,7 @@ async function initServiceEnquiry() {
       form.elements.email.focus();
       return;
     }
-    if (!data.serviceCategory || !data.deviceType || !data.address || data.description.length < 10 || data.description.length > 1800 || !fields.has("consent")) {
+    if (!data.serviceCategory || !data.deviceType || !data.address || !data.purchaseType || data.description.length < 10 || data.description.length > 1800 || !fields.has("consent")) {
       status.textContent = "Choose a service type and device, provide your address and describe the issue in at least 10 characters, then provide consent.";
       status.dataset.state = "error";
       return;
@@ -545,7 +571,7 @@ async function initServiceEnquiry() {
         method: "POST",
         body: JSON.stringify({
           customer_name: data.customerName,
-          phone: data.phone.replace(/\D/g, ""),
+          phone: contactDigits,
           email: data.email || null,
           service_category: data.serviceCategory,
           device_type: data.deviceType,
@@ -553,14 +579,21 @@ async function initServiceEnquiry() {
           problem_description: data.description,
           address: data.address,
           preferred_contact_time: data.preferredContactTime,
-          image_urls: imageUrls
+          image_urls: imageUrls,
+          purchase_type: data.purchaseType,
+          purchase_reference: data.purchaseReference,
+          purchase_mobile: data.purchaseMobile
         })
       });
       form.reset();
       status.textContent = `Thank you. Your service request ${result.reference_id} has been received.${result.whatsapp_fallback_url ? " You may also contact the service department on WhatsApp." : ""}`;
       status.dataset.state = "success";
     } catch (error) {
-      status.textContent = "We could not send your enquiry. Please try again shortly.";
+      const detail = String(error?.message || "");
+      const isPurchaseFailure = detail.toLowerCase().includes("purchase verification");
+      status.textContent = isPurchaseFailure
+        ? "We could not verify that purchase. Check the invoice type, invoice or order number, and the registered mobile number, then try again."
+        : "We could not send your enquiry. Please try again shortly.";
       status.dataset.state = "error";
       console.error("Service enquiry submission failed:", error);
     } finally {

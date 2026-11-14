@@ -1,5 +1,70 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Customer Login | AIG Technology</title><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="assets/css/site.css"></head>
-<body><a class="skip-link" href="#main">Skip to content</a><header class="site-header"><div class="container header-inner"><a class="brand" href="index.html" aria-label="AIG TECHNOLOGY home"><img src="assets/images/aig-technology-logo.jpeg" alt="AIG TECHNOLOGY"></a><nav class="main-nav" aria-label="Main navigation"><a href="index.html">Home</a><a href="products.html">Products</a><a href="services.html">Services</a><a href="cart.html">Cart</a></nav></div></header>
-<main id="main"><section class="page-hero"><div class="container"><p class="eyebrow">Customer account</p><h1>Sign in with your mobile</h1><p>Login is optional and does not block guest checkout.</p></div></section><section class="section"><div class="container content-narrow"><form id="customer-login-form" class="form-panel" novalidate><h2>Customer login</h2><p class="notice">We will send a one-time verification code by SMS.</p><div class="field"><label for="customer-phone">Mobile number</label><input id="customer-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+91 9876543210" required></div><div id="recaptcha-container" class="field"></div><button id="send-code" class="button" type="submit">Send verification code</button><div id="otp-section" hidden><div class="field"><label for="customer-otp">Verification code</label><input id="customer-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="123456"></div><button id="verify-code" class="button" type="button">Verify and continue</button></div><p id="customer-login-status" class="form-status" role="status" aria-live="polite"></p></form></div></section></main>
-<footer class="site-footer"><div class="container"><div class="footer-bottom">© <span data-year></span> AIG TECHNOLOGY</div></div></footer><script type="module" src="assets/js/customer-auth.js?v=20261114-customer-auth"></script><script type="module" src="assets/js/site.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Purchase Verification | AIG Technology</title>
+  <meta name="description" content="Verify your AIG Technology purchase with your invoice or order number and registered mobile number to request warranty-linked service.">
+  <link rel="canonical" href="https://aigtechnology.in/customer-login.html">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/css/site.css?v=20261114-purchase">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="index.html" aria-label="AIG TECHNOLOGY home"><img src="assets/images/aig-technology-logo.jpeg" alt="AIG TECHNOLOGY"></a>
+      <nav class="main-nav" aria-label="Main navigation">
+        <a href="index.html">Home</a>
+        <a href="products.html">Products</a>
+        <a href="services.html">Services</a>
+        <a href="cart.html">Cart</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="page-hero">
+      <div class="container">
+        <p class="eyebrow">Customer account</p>
+        <h1>Verify your purchase</h1>
+        <p>Invoice numbers can repeat between GST and non-GST bills, so we check the invoice type, the invoice or order number, and the mobile number registered with the purchase.</p>
+      </div>
+    </section>
+    <section class="section">
+      <div class="container content-narrow">
+        <form id="purchase-verify-form" class="form-panel" novalidate>
+          <h2>Purchase details</h2>
+          <p class="notice">For an online order, use the order ID from your confirmation page and the mobile number you entered at checkout.</p>
+          <div class="field">
+            <label for="purchase-type">Purchase type *</label>
+            <select id="purchase-type" name="invoiceType" required>
+              <option value="">Choose purchase type</option>
+              <option value="GST">GST invoice</option>
+              <option value="NON_GST">Non-GST invoice</option>
+              <option value="ONLINE">Online order</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="invoice-number">Invoice / order number *</label>
+            <input id="invoice-number" name="invoiceNumber" maxlength="120" autocomplete="off" required placeholder="Invoice number, e.g. INV-1001">
+          </div>
+          <div class="field">
+            <label for="registered-mobile">Registered mobile number *</label>
+            <input id="registered-mobile" name="mobile" type="tel" inputmode="numeric" autocomplete="tel" maxlength="10" required placeholder="10-digit mobile number">
+            <small>The 10-digit number given to us at the time of purchase.</small>
+          </div>
+          <button class="button" type="submit">Verify purchase</button>
+          <p id="purchase-verify-status" class="form-status" role="status" aria-live="polite"></p>
+        </form>
+        <p class="notice notice-warning">Cannot verify your purchase? Send the invoice copy to our service department from the <a href="contact.html">contact page</a> and we will confirm it manually.</p>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-bottom">© <span data-year></span> AIG TECHNOLOGY</div>
+    </div>
+  </footer>
+  <script type="module" src="assets/js/customer-login.js?v=20261114-purchase"></script>
+</body>
+</html>

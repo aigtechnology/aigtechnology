@@ -1,4 +1,6 @@
-import { getProductById, getProducts, getPublicSettings, submitEnquiry, submitServiceEnquiry } from "./firestore.js?v=20261025-retailer";
+import { getProductById, getProducts, getPublicSettings, submitEnquiry } from "./firestore.js?v=20261025-retailer";
+import { backendRequest } from "./backend-api.js?v=20261114-services";
+import { uploadProductImage } from "./cloudinary.js";
 import { isFirebaseConfigured } from "./firebase-client.js";
 import { businessContactConfig } from "./firebase-config.js";
 import { addCartItem, cartItemCount } from "./cart-store.js";
@@ -500,16 +502,17 @@ async function initServiceEnquiry() {
     const fields = new FormData(form);
     if (String(fields.get("companyWebsite") || "").trim()) return;
     const data = {
-      name: String(fields.get("name") || "").trim(),
+      customerName: String(fields.get("name") || "").trim(),
       phone: String(fields.get("phone") || "").trim(),
       email: String(fields.get("email") || "").trim(),
       serviceCategory: String(fields.get("serviceCategory") || "").trim(),
+      deviceType: String(fields.get("deviceType") || "").trim(),
+      brandModel: String(fields.get("brandModel") || "").trim(),
       description: String(fields.get("description") || "").trim(),
-      brand: String(fields.get("brand") || "").trim(),
-      model: String(fields.get("model") || "").trim(),
-      preferredContactMethod: String(fields.get("preferredContactMethod") || "").trim()
+      address: String(fields.get("address") || "").trim(),
+      preferredContactTime: String(fields.get("preferredContactTime") || "").trim()
     };
-    if (data.name.length < 2 || data.name.length > 100) {
+    if (data.customerName.length < 2 || data.customerName.length > 100) {
       status.textContent = "Enter your name (2–100 characters).";
       status.dataset.state = "error";
       form.elements.name.focus();
@@ -527,8 +530,8 @@ async function initServiceEnquiry() {
       form.elements.email.focus();
       return;
     }
-    if (!data.serviceCategory || data.description.length < 10 || data.description.length > 1800 || !fields.has("consent")) {
-      status.textContent = "Choose a service enquiry type, describe your needs in at least 10 characters, and provide consent.";
+    if (!data.serviceCategory || !data.deviceType || !data.address || data.description.length < 10 || data.description.length > 1800 || !fields.has("consent")) {
+      status.textContent = "Choose a service type and device, provide your address and describe the issue in at least 10 characters, then provide consent.";
       status.dataset.state = "error";
       return;
     }
@@ -536,9 +539,25 @@ async function initServiceEnquiry() {
     status.textContent = "Sending your service enquiry…";
     status.dataset.state = "";
     try {
-      await submitServiceEnquiry(data);
+      const imageFiles = [...(form.elements.images?.files || [])];
+      const imageUrls = imageFiles.length ? (await Promise.all(imageFiles.slice(0, 6).map(file => uploadProductImage(file))).then(items => items.map(item => item.url))) : [];
+      const result = await backendRequest("/service-requests", {
+        method: "POST",
+        body: JSON.stringify({
+          customer_name: data.customerName,
+          phone: data.phone.replace(/\D/g, ""),
+          email: data.email || null,
+          service_category: data.serviceCategory,
+          device_type: data.deviceType,
+          brand_model: data.brandModel,
+          problem_description: data.description,
+          address: data.address,
+          preferred_contact_time: data.preferredContactTime,
+          image_urls: imageUrls
+        })
+      });
       form.reset();
-      status.textContent = "Thank you. Your service enquiry has been received.";
+      status.textContent = `Thank you. Your service request ${result.reference_id} has been received.${result.whatsapp_fallback_url ? " You may also contact the service department on WhatsApp." : ""}`;
       status.dataset.state = "success";
     } catch (error) {
       status.textContent = "We could not send your enquiry. Please try again shortly.";

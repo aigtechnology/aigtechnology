@@ -53,15 +53,18 @@
             <div class="field"><label for="service-name">Your name *</label><input id="service-name" name="name" autocomplete="name" required minlength="2" maxlength="100"></div>
             <div class="field"><label for="service-phone">Phone number *</label><input id="service-phone" name="phone" type="tel" autocomplete="tel" required minlength="7" maxlength="25"></div>
             <div class="field"><label for="service-email">Email address (optional)</label><input id="service-email" name="email" type="email" autocomplete="email" maxlength="254"></div>
-            <div class="field"><label for="service-category">Enquiry type *</label><select id="service-category" name="serviceCategory" required><option value="">Choose an enquiry type</option><option>Computer Purchase Guidance</option><option>Hardware Enquiry</option><option>Upgrade Enquiry</option><option>Warranty Support</option><option>Other Enquiry</option></select></div>
-            <div class="field"><label for="service-brand">Device brand (optional)</label><input id="service-brand" name="brand" maxlength="100"></div>
-            <div class="field"><label for="service-model">Model (optional)</label><input id="service-model" name="model" maxlength="100"></div>
+            <div class="field"><label for="service-category">Service category *</label><select id="service-category" name="serviceCategory" required><option value="">Choose a service</option><option>Computer Repair</option><option>Laptop Repair</option><option>Desktop Assembly</option><option>Windows Installation</option><option>Software Installation</option><option>Hardware Upgrade</option><option>RAM / SSD Upgrade</option><option>Data Recovery</option><option>Networking Support</option><option>Annual Maintenance</option><option>Other Technical Support</option></select></div>
+            <div class="field"><label for="service-device">Device type *</label><select id="service-device" name="deviceType" required><option value="">Choose device</option><option>Desktop</option><option>Laptop</option><option>Printer</option><option>Other</option></select></div>
+            <div class="field full"><label for="service-brand-model">Device brand and model</label><input id="service-brand-model" name="brandModel" maxlength="160" placeholder="e.g. Dell OptiPlex 7040"></div>
             <div class="field full"><label for="service-description">Describe your enquiry *</label><textarea id="service-description" name="description" required minlength="10" maxlength="1200"></textarea></div>
-            <div class="field"><label for="preferred-contact">Preferred contact method (optional)</label><select id="preferred-contact" name="preferredContactMethod"><option value="">No preference</option><option>Phone</option><option>Email</option><option>WhatsApp</option></select></div>
+            <div class="field full"><label for="service-address">Address / location *</label><textarea id="service-address" name="address" required maxlength="500"></textarea></div>
+            <div class="field"><label for="preferred-contact-time">Preferred contact time</label><input id="preferred-contact-time" name="preferredContactTime" maxlength="80" placeholder="e.g. 5 PM – 7 PM"></div>
+            <div class="field full"><label for="service-images">Device images (optional)</label><input id="service-images" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple><small>Up to 6 images, 8 MB each. Images use the configured Cloudinary upload.</small></div>
           </div>
           <div class="honeypot" aria-hidden="true"><label for="service-company-website">Leave this field blank</label><input id="service-company-website" name="companyWebsite" tabindex="-1" autocomplete="off"></div>
           <div class="field"><label><input type="checkbox" name="consent" required style="width:auto;min-height:0;margin-right:8px">I agree that my details may be used to respond to this enquiry.</label></div>
-          <button class="button" type="submit">Send service enquiry</button>
+          <button class="button" type="submit">Submit service request</button>
+          <a class="button button-whatsapp" href="https://wa.me/918511693405?text=Hello%20AIG%20Technology%20Service%20Department%2C%20I%20need%20technical%20assistance." target="_blank" rel="noopener noreferrer">Chat with Service Department</a>
           <p id="service-enquiry-status" class="form-status" role="status" aria-live="polite"></p>
         </form>
       </div>

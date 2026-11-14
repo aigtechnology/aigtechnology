@@ -63,6 +63,18 @@ th { color: var(--admin-muted); font-size: .78rem; text-transform: uppercase; le
 .login-card form { display: grid; gap: 14px; margin-top: 24px; }
 .login-card label { display: grid; gap: 6px; color: #334155; font-weight: 700; }
 .error { color: var(--admin-danger); }
+.parcel-label { display: none; }
+@media print {
+  @page { margin: 12mm; }
+  body.admin-app { background: #fff; }
+  .admin-sidebar, .admin-topbar, .page-heading, .filter-bar, #orders-status, #orders-table, #order-detail > .panel:not(:first-of-type), .button { display: none !important; }
+  .admin-layout, .admin-content, .admin-main { display: block; width: 100%; min-height: 0; margin: 0; padding: 0; }
+  #order-detail { display: block !important; border: 0; padding: 0; margin: 0; }
+  #order-detail > .parcel-label { display: block; width: 100%; padding: 8mm; border: 2px solid #000; color: #000; font-family: Arial, sans-serif; }
+  .parcel-label__pincode { margin-bottom: 8mm; font-size: 28pt; font-weight: 800; letter-spacing: .05em; }
+  .parcel-label__name { margin-bottom: 5mm; font-size: 20pt; font-weight: 800; text-transform: uppercase; }
+  .parcel-label__address { font-size: 16pt; line-height: 1.45; }
+}
 @media (max-width: 1050px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .dashboard-grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .admin-layout { display: block; } .admin-sidebar { padding: 12px; } .admin-brand { padding: 5px 8px 14px; } .admin-nav { display: flex; overflow-x: auto; } .admin-nav-section { display: none; } .admin-nav a { flex: 0 0 auto; } .admin-topbar { min-height: 62px; } .admin-user { display: none; } .page-heading { align-items: start; flex-direction: column; } }
 @media (max-width: 480px) { .stats-grid { grid-template-columns: 1fr; } .admin-main { padding-inline: 14px; } }

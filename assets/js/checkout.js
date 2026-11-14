@@ -363,6 +363,8 @@ async function initConfirmationPage() {
       <h3>Products</h3><ul>${order.items.map(item => `<li>${escapeHtml(item.name)} (SKU ${escapeHtml(item.sku)}) × ${item.quantity} — ${money(item.subtotal)}</li>`).join("")}</ul>
       <h3>Delivery address</h3><address>${escapeHtml(order.shipping_address.line1)}${order.shipping_address.line2 ? `<br>${escapeHtml(order.shipping_address.line2)}` : ""}<br>${escapeHtml(order.shipping_address.city)}, ${escapeHtml(order.shipping_address.state)} ${escapeHtml(order.shipping_address.postal_code)}</address>
       <p><strong>Order date:</strong> ${escapeHtml(order.order_date ? new Date(order.order_date).toLocaleString() : "—")}</p>
+      ${Array.isArray(order.status_history) && order.status_history.length ? `<h3>Status history</h3><ul>${order.status_history.map(item => `<li>${escapeHtml(item.new_status)} — ${escapeHtml(item.created_at ? new Date(item.created_at).toLocaleString() : "")}</li>`).join("")}</ul>` : ""}
+      ${order.whatsapp_fallback_url ? `<p><a class="button button-whatsapp" href="${escapeHtml(order.whatsapp_fallback_url)}" target="_blank" rel="noopener noreferrer">Contact AIG on WhatsApp</a></p>` : ""}
       <p>Expected delivery will be shared when available.</p>
     </section>`;
   } catch (error) {

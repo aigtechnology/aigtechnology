@@ -14,6 +14,14 @@ ui-debug.log
 .DS_Store
 Thumbs.db
 .venv/
+.venv-current/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Disposable local PostgreSQL rehearsal data
+.local/
+runtime/
+database-backups/
+deployment-backups/
+config/backend.env

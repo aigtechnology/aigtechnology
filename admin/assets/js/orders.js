@@ -1,11 +1,12 @@
 import { apiRequest } from "./api.js?v=20261107-csrf";
 import { escapeHtml, shell } from "./common.js";
 
-const content = `<div class="page-heading"><div><p class="eyebrow">Website &amp; Flipkart</p><h2>Orders</h2><p class="muted">Website orders and synchronized marketplace orders.</p><p id="sync-status" class="muted" role="status"></p></div><div><button class="button" id="sync-orders" type="button">Sync from Flipkart</button> <button class="button secondary" id="refresh-orders" type="button">Refresh orders</button></div></div>
+const onlineView = document.body.dataset.orderView === "razorpay";
+const content = `<div class="page-heading"><div><p class="eyebrow">${onlineView ? "Website payments" : "Website &amp; Flipkart"}</p><h2>${onlineView ? "Online Razorpay Orders" : "Orders"}</h2><p class="muted">${onlineView ? "Orders placed on the website and paid through Razorpay." : "Website orders and synchronized marketplace orders."}</p><p id="sync-status" class="muted" role="status"></p></div><div>${onlineView ? "" : '<button class="button" id="sync-orders" type="button">Sync from Flipkart</button> '}<button class="button secondary" id="refresh-orders" type="button">Refresh orders</button></div></div>
 <div class="filter-bar"><input id="order-search" type="search" placeholder="Search order or shipment ID" aria-label="Search orders"><select id="order-status" aria-label="Filter by status"><option value="">All statuses</option><option value="pending payment">Pending payment</option><option value="confirmed">Confirmed</option><option value="processing">Processing</option><option value="shipped">Shipped</option><option value="delivered">Delivered</option><option value="cancelled">Cancelled</option></select><select id="payment-status" aria-label="Filter by payment status"><option value="">All payment statuses</option><option>Created</option><option>Pending</option><option>Authorized</option><option>Captured</option><option>Failed</option><option>Refunded</option><option>Partially Refunded</option></select><label>From <input id="date-from" type="date"></label><label>To <input id="date-to" type="date"></label></div>
 <p id="orders-status" class="muted" role="status"></p><section class="panel"><div class="table-wrap"><table><thead><tr><th>Order ID</th><th>Source</th><th>Date</th><th>Fulfilment</th><th>Payment status</th><th>Total</th><th></th></tr></thead><tbody id="orders-table"><tr><td colspan="7" class="empty">Loading orders…</td></tr></tbody></table></div></section><section id="order-detail" class="panel" hidden aria-live="polite"></section>`;
 
-document.body.innerHTML = shell({ active: "orders", title: "Orders", content });
+document.body.innerHTML = shell({ active: onlineView ? "online-orders" : "orders", title: onlineView ? "Online Razorpay Orders" : "Orders", content });
 const table = document.querySelector("#orders-table");
 let orders = [];
 const statusMessage = document.querySelector("#orders-status");
@@ -19,8 +20,26 @@ function render() {
     (!paymentStatus || String(order.payment_status || "").toLowerCase() === paymentStatus.toLowerCase()) &&
     (!term || `${order.order_id} ${order.shipment_id || ""}`.toLowerCase().includes(term))
   );
-  table.innerHTML = filtered.length ? filtered.map(order => `<tr><td>${escapeHtml(order.order_id)}</td><td>${escapeHtml(order.source === "website" ? "Website" : `Flipkart · ${order.shipment_id || "—"}`)}</td><td>${escapeHtml(order.order_date ? new Date(order.order_date).toLocaleString() : "—")}</td><td><span class="status ${String(order.status).toLowerCase() === "delivered" ? "success" : String(order.status).toLowerCase() === "cancelled" ? "danger" : "pending"}">${escapeHtml(order.status)}</span></td><td>${escapeHtml(order.payment_status || "—")}</td><td>₹ ${escapeHtml(order.total_amount)}</td><td>${order.source === "website" ? `<button class="button secondary" type="button" data-order-detail="${escapeHtml(order.order_id)}">Details</button>` : ""}</td></tr>`).join("") : `<tr><td colspan="7" class="empty">No orders found.</td></tr>`;
+  table.innerHTML = filtered.length ? filtered.map(order => `<tr><td>${escapeHtml(order.order_id)}</td><td>${escapeHtml(order.source === "website" ? "Website" : `Flipkart · ${order.shipment_id || "—"}`)}</td><td>${escapeHtml(order.order_date ? new Date(order.order_date).toLocaleString() : "—")}</td><td><span class="status ${String(order.status).toLowerCase() === "delivered" ? "success" : String(order.status).toLowerCase() === "cancelled" ? "danger" : "pending"}">${escapeHtml(order.status)}</span></td><td>${escapeHtml(order.payment_status || "—")}</td><td>₹ ${escapeHtml(order.total_amount)}</td><td>${order.source === "website" ? `<button class="button secondary" type="button" data-order-detail="${escapeHtml(order.order_id)}">Details</button> <button class="button secondary" type="button" data-order-print="${escapeHtml(order.order_id)}">Print label</button>` : ""}</td></tr>`).join("") : `<tr><td colspan="7" class="empty">No orders found.</td></tr>`;
   table.querySelectorAll("[data-order-detail]").forEach(button => button.addEventListener("click", () => loadOrderDetail(button.dataset.orderDetail)));
+  table.querySelectorAll("[data-order-print]").forEach(button => button.addEventListener("click", () => printParcelLabel(button.dataset.orderPrint)));
+}
+
+async function printParcelLabel(orderId) {
+  const popup = window.open("", "_blank", "width=700,height=700");
+  if (!popup) { statusMessage.textContent = "Allow pop-ups for this admin page to print the parcel label."; return; }
+  popup.document.write("<p style='font-family:Arial;padding:24px'>Loading parcel label…</p>");
+  try {
+    const order = await apiRequest(`/admin/orders/${encodeURIComponent(orderId)}?include_private=true`);
+    const address = order.shipping_address || {};
+    popup.document.open();
+    popup.document.write(`<!doctype html><html><head><title>Parcel label ${escapeHtml(order.order_id)}</title><style>@page{margin:12mm}body{margin:0;font-family:Arial,sans-serif;color:#000}.label{border:2px solid #000;padding:8mm}.pin{font-size:28pt;font-weight:800;letter-spacing:.05em;margin-bottom:8mm}.name{font-size:20pt;font-weight:800;text-transform:uppercase;margin-bottom:5mm}.address{font-size:16pt;line-height:1.45}</style></head><body><main class="label"><div class="pin">PIN CODE: ${escapeHtml(address.postal_code || "")}</div><div class="name">${escapeHtml(order.customer || "")}</div><div class="address">${escapeHtml(address.line1 || "")}${address.line2 ? `<br>${escapeHtml(address.line2)}` : ""}<br>${escapeHtml(address.city || "")}, ${escapeHtml(address.state || "")}</div></main></body></html>`);
+    popup.document.close();
+    popup.focus();
+    popup.setTimeout(() => popup.print(), 200);
+  } catch (error) {
+    popup.document.body.innerHTML = `<p style="font-family:Arial;padding:24px">${escapeHtml(error.message || "Could not load parcel label.")}</p>`;
+  }
 }
 
 async function load() {
@@ -31,6 +50,7 @@ async function load() {
   if (document.querySelector("#date-to").value) params.set("date_to", new Date(`${document.querySelector("#date-to").value}T23:59:59`).toISOString());
   if (document.querySelector("#order-status").value) params.set("status", document.querySelector("#order-status").value);
   if (document.querySelector("#payment-status").value) params.set("payment_status", document.querySelector("#payment-status").value);
+  if (onlineView) { params.set("source", "website"); params.set("payment_provider", "razorpay"); }
   try { orders = await apiRequest(`/orders${params.size ? `?${params}` : ""}`); render(); }
   catch (error) {
     if (error.status === 401) location.href = "operations-login.html";
@@ -44,15 +64,17 @@ async function loadOrderDetail(orderId) {
   detail.innerHTML = `<p>Loading order details…</p>`;
   try {
     const [order, transactions] = await Promise.all([
-      apiRequest(`/admin/orders/${encodeURIComponent(orderId)}`),
+      apiRequest(`/admin/orders/${encodeURIComponent(orderId)}?include_private=true`),
       apiRequest(`/admin/orders/${encodeURIComponent(orderId)}/transactions`)
     ]);
     const address = order.shipping_address || {};
-    const nextStatus = { Confirmed: "Processing", Processing: "Shipped", Shipped: "Delivered" }[order.status];
+    const nextStatus = { Confirmed: "Processing", Processing: "Packed", Packed: "Shipped", Shipped: "Out for Delivery", "Out for Delivery": "Delivered" }[order.status];
     const canRefund = ["Captured", "Partially Refunded"].includes(order.payment_status);
     const canReconcile = order.payment_method === "razorpay" && order.payment_id && ["Pending", "Authorized"].includes(order.payment_status);
     detail.innerHTML = `<h2>Website order ${escapeHtml(order.order_id)}</h2><p><strong>Customer:</strong> ${escapeHtml(order.customer)} · ${escapeHtml(order.customer_email)} · ${escapeHtml(order.customer_phone)}</p><p><strong>Payment:</strong> ${escapeHtml(order.payment_status)} · ${escapeHtml(order.payment_method || "—")} · ${escapeHtml(order.payment_reference || "—")}</p><p><strong>Delivery:</strong> ${escapeHtml(address.line1)} ${escapeHtml(address.line2 || "")}, ${escapeHtml(address.city)}, ${escapeHtml(address.state)} ${escapeHtml(address.postal_code)}</p>${canReconcile ? `<button class="button secondary" id="reconcile-payment" type="button">Reconcile with Razorpay</button>` : ""}${nextStatus && ["Captured", "Partially Refunded", "Refunded"].includes(order.payment_status) ? `<form id="fulfillment-form" class="filter-bar"><label>Fulfilment status<select name="status"><option value="${escapeHtml(nextStatus)}">${escapeHtml(nextStatus)}</option></select></label><button class="button" type="submit">Update status</button></form>` : ""}${canRefund ? `<button class="button secondary" id="issue-refund" type="button">Issue refund</button>` : ""}<p id="order-action-status" role="status"></p><h3>Products</h3><div class="table-wrap"><table><thead><tr><th>Product / SKU</th><th>Quantity</th><th>Unit price</th><th>Subtotal</th></tr></thead><tbody>${order.items.map(item => `<tr><td>${escapeHtml(item.name)}<br><small>${escapeHtml(item.sku)}</small></td><td>${escapeHtml(item.quantity)}</td><td>₹ ${escapeHtml(item.unit_price)}</td><td>₹ ${escapeHtml(item.subtotal)}</td></tr>`).join("")}</tbody></table></div><h3>Payment and refund history</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>Status</th><th>Reference</th><th>Amount</th><th>Date</th></tr></thead><tbody>${transactions.map(item => `<tr><td>${escapeHtml(item.type)}</td><td>${escapeHtml(item.status)}</td><td>${escapeHtml(item.provider_reference || "—")}</td><td>${escapeHtml(item.amount || "—")}</td><td>${escapeHtml(item.created_at ? new Date(item.created_at).toLocaleString() : "—")}</td></tr>`).join("") || `<tr><td colspan="5">No payment events yet.</td></tr>`}</tbody></table></div>`;
     detail.innerHTML = `<h2>Website order ${escapeHtml(order.order_id)}</h2><p><strong>Payment:</strong> ${escapeHtml(order.payment_status)} · ${escapeHtml(order.payment_method || "—")}</p><p>Customer contact, delivery address, and provider references are not exposed in this operations view.</p>${canReconcile ? `<button class="button secondary" id="reconcile-payment" type="button">Reconcile with Razorpay</button>` : ""}${nextStatus && ["Captured", "Partially Refunded", "Refunded"].includes(order.payment_status) ? `<form id="fulfillment-form" class="filter-bar"><label>Fulfilment status<select name="status"><option value="${escapeHtml(nextStatus)}">${escapeHtml(nextStatus)}</option></select></label><button class="button" type="submit">Update status</button></form>` : ""}${canRefund ? `<button class="button secondary" id="issue-refund" type="button">Issue refund</button>` : ""}<p id="order-action-status" role="status"></p><h3>Products</h3><div class="table-wrap"><table><thead><tr><th>Product / SKU</th><th>Quantity</th><th>Unit price</th><th>Subtotal</th></tr></thead><tbody>${order.items.map(item => `<tr><td>${escapeHtml(item.name)}<br><small>${escapeHtml(item.sku)}</small></td><td>${escapeHtml(item.quantity)}</td><td>₹ ${escapeHtml(item.unit_price)}</td><td>₹ ${escapeHtml(item.subtotal)}</td></tr>`).join("")}</tbody></table></div><h3>Payment and refund history</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>Status</th><th>Amount</th><th>Date</th></tr></thead><tbody>${transactions.map(item => `<tr><td>${escapeHtml(item.type)}</td><td>${escapeHtml(item.status)}</td><td>₹ ${escapeHtml(item.amount || "—")}</td><td>${escapeHtml(item.created_at ? new Date(item.created_at).toLocaleString() : "—")}</td></tr>`).join("") || `<tr><td colspan="4">No payment events yet.</td></tr>`}</tbody></table></div>`;
+    detail.insertAdjacentHTML("afterbegin", `<div class="parcel-label" aria-label="Parcel label"><div class="parcel-label__pincode">PIN CODE: ${escapeHtml(address.postal_code || "")}</div><div class="parcel-label__name">${escapeHtml(order.customer || "")}</div><div class="parcel-label__address">${escapeHtml(address.line1 || "")}${address.line2 ? `<br>${escapeHtml(address.line2)}` : ""}<br>${escapeHtml(address.city || "")}, ${escapeHtml(address.state || "")}</div></div><div class="panel"><p><strong>Customer:</strong> ${escapeHtml(order.customer)} · ${escapeHtml(order.customer_email)} · ${escapeHtml(order.customer_phone)}</p><p><strong>Address:</strong> ${escapeHtml(address.line1)} ${escapeHtml(address.line2 || "")}, ${escapeHtml(address.city)}, ${escapeHtml(address.state)} ${escapeHtml(address.postal_code)}</p><p><a class="button secondary" href="tel:${escapeHtml(order.customer_phone)}">Call customer</a> <a class="button secondary" href="https://wa.me/91${escapeHtml(order.customer_phone)}" target="_blank" rel="noopener noreferrer">WhatsApp</a> <button class="button secondary" id="print-order" type="button">Print parcel label</button></p><h3>Status history</h3><ul>${(order.status_history || []).map(item => `<li>${escapeHtml(item.new_status)} — ${escapeHtml(item.created_at ? new Date(item.created_at).toLocaleString() : "")}</li>`).join("") || "<li>No status history.</li>"}</ul></div>`);
+    detail.querySelector("#print-order")?.addEventListener("click", () => printParcelLabel(order.order_id));
     const actionStatus = detail.querySelector("#order-action-status");
     detail.querySelector("#reconcile-payment")?.addEventListener("click", async event => {
       const button = event.currentTarget;
@@ -106,7 +128,7 @@ document.querySelector("#payment-status").addEventListener("change", load);
 document.querySelector("#date-from").addEventListener("change", load);
 document.querySelector("#date-to").addEventListener("change", load);
 document.querySelector("#refresh-orders").addEventListener("click", load);
-document.querySelector("#sync-orders").addEventListener("click", async () => {
+document.querySelector("#sync-orders")?.addEventListener("click", async () => {
   const button = document.querySelector("#sync-orders");
   const status = document.querySelector("#sync-status");
   button.disabled = true;

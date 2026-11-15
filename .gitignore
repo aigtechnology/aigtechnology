@@ -11,6 +11,7 @@ ui-debug.log
 
 # Local tooling
 .firebase/
+*.log
 .DS_Store
 Thumbs.db
 .venv/

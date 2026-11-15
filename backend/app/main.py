@@ -15,7 +15,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from .auth import SESSION_COOKIE, _now, _token_hash, create_session, csrf_token, get_current_user, require_admin, set_session_cookie, verify_password
 from . import business_models  # noqa: F401 - registers business tables before create_all
@@ -49,6 +49,7 @@ from .payment_providers import (
     verify_razorpay_payment_signature,
     verify_razorpay_webhook_signature,
 )
+from .notifications import get_dispatch_working_days, send_order_emails, set_dispatch_working_days
 from .sync import check_flipkart_connection
 from .schemas import (
     CatalogSyncRequest,
@@ -59,6 +60,7 @@ from .schemas import (
     PaymentOrderRequest,
     RefundRequest,
     SessionResponse,
+    DispatchSettingsUpdate,
     UserResponse,
     VerifyPaymentRequest,
 )
@@ -92,11 +94,14 @@ def validate_database() -> None:
         if settings.payment_provider == "mock":
             raise RuntimeError("Mock payments are not permitted in production.")
         if settings.payment_provider == "razorpay" and (
-            not settings.razorpay_key_id.startswith("rzp_test_")
+            not (
+                settings.razorpay_key_id.startswith("rzp_test_")
+                or settings.razorpay_key_id.startswith("rzp_live_")
+            )
             or not settings.razorpay_key_secret
             or not settings.razorpay_webhook_secret
         ):
-            raise RuntimeError("Production validation requires Razorpay test credentials and a webhook secret.")
+            raise RuntimeError("Production validation requires a valid Razorpay test/live key and a webhook secret.")
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
         if revision != "20261107_01":
@@ -210,16 +215,23 @@ def _serialize_website_order(order: WebsiteOrder) -> dict[str, object]:
     }
 
 def _serialize_website_order_admin_detail(order: WebsiteOrder) -> dict[str, object]:
+    customer = order.customer
     payment = order.payments[0] if order.payments else None
     return {
         "order_id": order.order_id,
         "source": "website",
         "order_date": order.created_at,
+        "customer": customer.full_name,
+        "customer_email": customer.email,
+        "customer_phone": customer.phone,
         "status": order.status,
         "payment_status": order.payment_status,
         "payment_method": payment.provider if payment else None,
         "payment_id": payment.payment_id if payment else None,
+        "payment_reference": payment.provider_payment_id if payment else None,
         "total_amount": str(order.total_amount),
+        "shipping_address": order.shipping_address,
+        "billing_address": order.billing_address,
         "items": [
             {"name": item.name, "sku": item.sku, "quantity": item.quantity,
              "unit_price": str(item.unit_price), "subtotal": str(item.subtotal)}
@@ -345,7 +357,11 @@ def _accessible_order(
     get_current_user(session_token, database)
     order = database.scalar(
         select(WebsiteOrder)
-        .options(joinedload(WebsiteOrder.customer), joinedload(WebsiteOrder.items), joinedload(WebsiteOrder.payments))
+        .options(
+            joinedload(WebsiteOrder.customer),
+            selectinload(WebsiteOrder.items),
+            selectinload(WebsiteOrder.payments),
+        )
         .where(WebsiteOrder.order_id == order_id)
     )
     if order is None:
@@ -497,6 +513,8 @@ async def verify_payment(
     else:
         release_reservations(database, order)
     database.commit()
+    if success:
+        await send_order_emails(order, payment)
     return {"order_id": order.order_id, "payment_status": payment.status, "order_status": order.status}
 
 
@@ -519,7 +537,8 @@ async def _reconcile_razorpay_payment(
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")
     provider_status = provider_payment.get("status")
-    if provider_status == "captured" and payment.status not in {"Captured", "Refunded", "Partially Refunded"}:
+    captured_transition = provider_status == "captured" and payment.status not in {"Captured", "Refunded", "Partially Refunded"}
+    if captured_transition:
         if order.status == "Cancelled":
             refund_key = f"late-capture:{hashlib.sha256(payment.provider_payment_id.encode()).hexdigest()}"
             refund = database.scalar(select(WebsiteRefund).where(WebsiteRefund.idempotency_key == refund_key))
@@ -555,6 +574,8 @@ async def _reconcile_razorpay_payment(
         for attempt in payment.attempts:
             attempt.status = "Failed"
     database.commit()
+    if captured_transition and payment.status == "Captured":
+        await send_order_emails(order, payment)
     return {"payment_status": payment.status, "order_status": order.status}
 
 
@@ -622,6 +643,8 @@ async def razorpay_webhook(
         payload=_webhook_summary(event_type, payload),
     ))
     entity: dict[str, object] = {}
+    captured_order: WebsiteOrder | None = None
+    captured_payment: WebsitePayment | None = None
     if event_type in {"payment.authorized", "payment.captured", "payment.failed"}:
         payment_payload = payload.get("payload")
         payment_entity = payment_payload.get("payment") if isinstance(payment_payload, dict) else None
@@ -691,6 +714,8 @@ async def razorpay_webhook(
                         elif success:
                             order.status = "Confirmed"
                             capture_reservations(database, order)
+                            captured_order = order
+                            captured_payment = payment
                         else:
                             order.status = "Cancelled"
                             release_reservations(database, order)
@@ -732,6 +757,8 @@ async def razorpay_webhook(
         if database.scalar(select(PaymentWebhookEvent.id).where(PaymentWebhookEvent.provider_event_id == event_id)):
             return {"received": True, "duplicate": True}
         raise
+    if captured_order is not None and captured_payment is not None:
+        await send_order_emails(captured_order, captured_payment)
     return {"received": True, "duplicate": False}
 
 
@@ -805,7 +832,7 @@ def website_order_transactions(
         raise HTTPException(status_code=404, detail="Website order not found")
     payment = database.scalar(
         select(WebsitePayment)
-        .options(joinedload(WebsitePayment.attempts), joinedload(WebsitePayment.refunds))
+        .options(selectinload(WebsitePayment.attempts), selectinload(WebsitePayment.refunds))
         .where(WebsitePayment.order_id == order.id)
     )
     if payment is None:
@@ -839,7 +866,11 @@ def website_order_admin_detail(
 ) -> dict[str, object]:
     order = database.scalar(
         select(WebsiteOrder)
-        .options(joinedload(WebsiteOrder.items), joinedload(WebsiteOrder.payments))
+        .options(
+            joinedload(WebsiteOrder.customer),
+            selectinload(WebsiteOrder.items),
+            selectinload(WebsiteOrder.payments),
+        )
         .where(WebsiteOrder.order_id == order_id)
     )
     if order is None:
@@ -936,6 +967,19 @@ def dashboard_summary(
     }
 
 
+@app.get("/api/admin/dispatch-settings", tags=["settings"])
+def dispatch_settings(user: AdminUser = Depends(require_admin)) -> dict[str, int]:
+    return {"working_days": get_dispatch_working_days()}
+
+
+@app.patch("/api/admin/dispatch-settings", tags=["settings"])
+def update_dispatch_settings(
+    payload: DispatchSettingsUpdate,
+    user: AdminUser = Depends(require_admin),
+) -> dict[str, int]:
+    return {"working_days": set_dispatch_working_days(payload.working_days)}
+
+
 @app.get("/api/orders", tags=["orders"])
 def list_orders(
     user: AdminUser = Depends(require_admin),
@@ -955,8 +999,8 @@ def list_orders(
         flipkart_query.order_by(FlipkartOrder.order_date.desc()).limit(limit)
     ).all()
     website_query = select(WebsiteOrder).options(
-        joinedload(WebsiteOrder.items),
-        joinedload(WebsiteOrder.payments),
+        selectinload(WebsiteOrder.items),
+        selectinload(WebsiteOrder.payments),
     )
     if date_from:
         website_query = website_query.where(WebsiteOrder.created_at >= date_from)

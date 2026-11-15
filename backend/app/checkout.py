@@ -8,7 +8,7 @@ from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 from .business_models import (
     Inventory,
@@ -241,7 +241,10 @@ def _order_created_response(
 def get_order_for_customer(database: Session, order_id: str, lookup_token: str) -> WebsiteOrder:
     order = database.scalar(
         select(WebsiteOrder)
-        .options(joinedload(WebsiteOrder.items), joinedload(WebsiteOrder.payments))
+        # Collection eager loads must use selectinload here.  Session.scalar()
+        # cannot safely consume the duplicate parent rows produced by
+        # joinedload() when an order has multiple items or payment attempts.
+        .options(selectinload(WebsiteOrder.items), selectinload(WebsiteOrder.payments))
         .where(WebsiteOrder.order_id == order_id)
     )
     if not order or not hmac.compare_digest(

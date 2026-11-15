@@ -1,4 +1,4 @@
-const PRODUCTION_API_BASE_URL = "https://api-preview.aigtechnology.in/api";
+const PRODUCTION_API_BASE_URL = "https://api.aigtechnology.in/api";
 const configuredApiUrl = globalThis.AIG_API_BASE_URL || PRODUCTION_API_BASE_URL;
 const locationObject = globalThis.location;
 const localFrontendHost = locationObject?.hostname || "";

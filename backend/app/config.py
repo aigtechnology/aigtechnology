@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     flipkart_app_secret: str = ""
     flipkart_access_token: str = ""
     flipkart_location_id: str = ""
+    mailjet_api_key: str = ""
+    mailjet_secret_key: str = ""
+    mailjet_api_url: str = "https://api.mailjet.com/v3.1/send"
+    notification_from_email: str = ""
+    notification_from_name: str = "AIG TECHNOLOGY"
+    admin_notification_email: str = ""
 
     model_config = SettingsConfigDict(env_file=os.environ.get("AIG_ENV_FILE", ".env"), extra="ignore")
 

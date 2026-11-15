@@ -99,3 +99,9 @@ class FulfillmentUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["Processing", "Shipped", "Delivered"]
+
+
+class DispatchSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    working_days: int = Field(ge=0, le=30)

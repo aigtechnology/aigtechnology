@@ -396,12 +396,13 @@ def test_admin_orders_include_website_order(client):
     details = test_client.get(f"/api/admin/orders/{order['order_id']}")
     assert details.status_code == 200
     assert details.json()["items"][0]["sku"] == "AIG-PC-1"
-    assert "customer_email" not in details.json()
-    assert "shipping_address" not in details.json()
+    assert details.json()["customer_email"] == "customer@example.com"
+    assert details.json()["customer_phone"] == "9876543210"
+    assert details.json()["shipping_address"]["postal_code"] == "380001"
     session_details = test_client.get(f"/api/orders/{order['order_id']}")
     assert session_details.status_code == 200
-    assert "customer_email" not in session_details.json()
-    assert "payment_reference" not in session_details.json()
+    assert session_details.json()["customer_email"] == "customer@example.com"
+    assert session_details.json()["payment_reference"] is None
     history = test_client.get(f"/api/admin/orders/{order['order_id']}/transactions")
     assert history.status_code == 200
     assert {item["type"] for item in history.json()} == {"payment", "attempt"}

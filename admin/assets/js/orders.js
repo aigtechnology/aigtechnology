@@ -4,7 +4,7 @@ import { escapeHtml, shell } from "./common.js";
 const onlineView = document.body.dataset.orderView === "razorpay";
 const content = `<div class="page-heading"><div><p class="eyebrow">${onlineView ? "Website payments" : "Website &amp; Flipkart"}</p><h2>${onlineView ? "Online Razorpay Orders" : "Orders"}</h2><p class="muted">${onlineView ? "Orders placed on the website and paid through Razorpay." : "Website orders and synchronized marketplace orders."}</p><p id="sync-status" class="muted" role="status"></p></div><div>${onlineView ? "" : '<button class="button" id="sync-orders" type="button">Sync from Flipkart</button> '}<button class="button secondary" id="refresh-orders" type="button">Refresh orders</button></div></div>
 <div class="filter-bar"><input id="order-search" type="search" placeholder="Search order or shipment ID" aria-label="Search orders"><select id="order-status" aria-label="Filter by status"><option value="">All statuses</option><option value="pending payment">Pending payment</option><option value="confirmed">Confirmed</option><option value="processing">Processing</option><option value="shipped">Shipped</option><option value="delivered">Delivered</option><option value="cancelled">Cancelled</option></select><select id="payment-status" aria-label="Filter by payment status"><option value="">All payment statuses</option><option>Created</option><option>Pending</option><option>Authorized</option><option>Captured</option><option>Failed</option><option>Refunded</option><option>Partially Refunded</option></select><label>From <input id="date-from" type="date"></label><label>To <input id="date-to" type="date"></label></div>
-<p id="orders-status" class="muted" role="status"></p><section class="panel"><div class="table-wrap"><table><thead><tr><th>Order ID</th><th>Customer</th><th>Mobile</th><th>Source</th><th>Date</th><th>Fulfilment</th><th>Payment status</th><th>Total</th><th></th></tr></thead><tbody id="orders-table"><tr><td colspan="9" class="empty">Loading orders…</td></tr></tbody></table></div></section><section id="order-detail" class="panel" hidden aria-live="polite"></section>`;
+<p id="orders-status" class="muted" role="status"></p><section class="panel"><div class="table-wrap"><table><thead><tr><th>Order ID</th><th>Source</th><th>Date</th><th>Fulfilment</th><th>Payment status</th><th>Total</th><th></th></tr></thead><tbody id="orders-table"><tr><td colspan="7" class="empty">Loading orders…</td></tr></tbody></table></div></section><section id="order-detail" class="panel" hidden aria-live="polite"></section>`;
 
 document.body.innerHTML = shell({ active: onlineView ? "online-orders" : "orders", title: onlineView ? "Online Razorpay Orders" : "Orders", content });
 const table = document.querySelector("#orders-table");
@@ -18,9 +18,9 @@ function render() {
   const filtered = orders.filter(order =>
     (!status || String(order.status).toLowerCase() === status.toLowerCase()) &&
     (!paymentStatus || String(order.payment_status || "").toLowerCase() === paymentStatus.toLowerCase()) &&
-    (!term || `${order.order_id} ${order.shipment_id || ""} ${order.customer || ""} ${order.customer_phone || ""} ${order.customer_email || ""}`.toLowerCase().includes(term))
+    (!term || `${order.order_id} ${order.shipment_id || ""}`.toLowerCase().includes(term))
   );
-  table.innerHTML = filtered.length ? filtered.map(order => `<tr><td>${escapeHtml(order.order_id)}</td><td>${escapeHtml(order.customer || "—")}<br><small>${escapeHtml(order.customer_email || "")}</small></td><td>${escapeHtml(order.customer_phone || "—")}</td><td>${escapeHtml(order.source === "website" ? "Website" : `Flipkart · ${order.shipment_id || "—"}`)}</td><td>${escapeHtml(order.order_date ? new Date(order.order_date).toLocaleString() : "—")}</td><td><span class="status ${String(order.status).toLowerCase() === "delivered" ? "success" : String(order.status).toLowerCase() === "cancelled" ? "danger" : "pending"}">${escapeHtml(order.status)}</span></td><td>${escapeHtml(order.payment_status || "—")}</td><td>₹ ${escapeHtml(order.total_amount)}</td><td>${order.source === "website" ? `<button class="button secondary" type="button" data-order-detail="${escapeHtml(order.order_id)}">Details</button> <button class="button secondary" type="button" data-order-print="${escapeHtml(order.order_id)}">Print label</button>` : ""}</td></tr>`).join("") : `<tr><td colspan="9" class="empty">No orders found.</td></tr>`;
+  table.innerHTML = filtered.length ? filtered.map(order => `<tr><td>${escapeHtml(order.order_id)}</td><td>${escapeHtml(order.source === "website" ? "Website" : `Flipkart · ${order.shipment_id || "—"}`)}</td><td>${escapeHtml(order.order_date ? new Date(order.order_date).toLocaleString() : "—")}</td><td><span class="status ${String(order.status).toLowerCase() === "delivered" ? "success" : String(order.status).toLowerCase() === "cancelled" ? "danger" : "pending"}">${escapeHtml(order.status)}</span></td><td>${escapeHtml(order.payment_status || "—")}</td><td>₹ ${escapeHtml(order.total_amount)}</td><td>${order.source === "website" ? `<button class="button secondary" type="button" data-order-detail="${escapeHtml(order.order_id)}">Details</button> <button class="button secondary" type="button" data-order-print="${escapeHtml(order.order_id)}">Print label</button>` : ""}</td></tr>`).join("") : `<tr><td colspan="7" class="empty">No orders found.</td></tr>`;
   table.querySelectorAll("[data-order-detail]").forEach(button => button.addEventListener("click", () => loadOrderDetail(button.dataset.orderDetail)));
   table.querySelectorAll("[data-order-print]").forEach(button => button.addEventListener("click", () => printParcelLabel(button.dataset.orderPrint)));
 }
@@ -43,7 +43,7 @@ async function printParcelLabel(orderId) {
 }
 
 async function load() {
-  table.innerHTML = `<tr><td colspan="9" class="empty">Loading orders…</td></tr>`;
+  table.innerHTML = `<tr><td colspan="7" class="empty">Loading orders…</td></tr>`;
   statusMessage.textContent = "";
   const params = new URLSearchParams();
   if (document.querySelector("#date-from").value) params.set("date_from", new Date(`${document.querySelector("#date-from").value}T00:00:00`).toISOString());
@@ -51,7 +51,6 @@ async function load() {
   if (document.querySelector("#order-status").value) params.set("status", document.querySelector("#order-status").value);
   if (document.querySelector("#payment-status").value) params.set("payment_status", document.querySelector("#payment-status").value);
   if (onlineView) { params.set("source", "website"); params.set("payment_provider", "razorpay"); }
-  params.set("include_private", "true");
   try { orders = await apiRequest(`/orders${params.size ? `?${params}` : ""}`); render(); }
   catch (error) {
     if (error.status === 401) location.href = "operations-login.html";

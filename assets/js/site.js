@@ -13,21 +13,6 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matc
 let businessWhatsAppNumber = businessContactConfig.whatsappNumber;
 let revealObserver;
 
-function productImageEntries(product) {
-  if (!Array.isArray(product?.images)) return [];
-  return product.images.map(image => {
-    const url = typeof image === "string" ? image : image?.url;
-    const alt = typeof image === "string" ? "" : image?.alt || "";
-    try {
-      const parsed = new URL(String(url || ""), document.baseURI);
-      if (parsed.protocol !== "https:" || /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(parsed.hostname)) return null;
-      return { url: parsed.href, alt };
-    } catch {
-      return null;
-    }
-  }).filter(Boolean);
-}
-
 const defaultProductCategories = [
   "Desktop Computers", "Mini PCs", "Keyboards and Mice",
   "SSDs and Storage", "RAM and Components", "Computer Accessories"
@@ -228,7 +213,7 @@ function productWhatsAppUrl(product) {
 
 function cartButton(product) {
   if (!product.sku || Number(product.price) <= 0 || Number(product.stockQuantity) <= 0) return "";
-  const image = productImageEntries(product)[0]?.url || "";
+  const image = Array.isArray(product.images) ? product.images[0]?.url || product.images[0] : "";
   const attributes = `data-sku="${escapeHtml(product.sku)}" data-name="${escapeHtml(product.name)}"
     data-image="${escapeHtml(typeof image === "string" ? image : "")}"`;
   return `<button class="button button-small" type="button" data-add-cart ${attributes}>Add to cart</button>
@@ -306,9 +291,8 @@ function setupImageFallbacks(root) {
 }
 
 function productCard(product) {
-  const images = productImageEntries(product);
-  const image = images[0]?.url || "";
-  const imageAlt = images[0]?.alt || "";
+  const image = Array.isArray(product.images) ? product.images[0]?.url || product.images[0] : "";
+  const imageAlt = Array.isArray(product.images) ? product.images[0]?.alt : "";
   const details = [product.brand, product.model].filter(Boolean).map(escapeHtml).join(" · ");
   const whatsappUrl = productWhatsAppUrl(product);
   return `<article class="product-card">
@@ -433,7 +417,11 @@ async function initProductDetails() {
       target.innerHTML = `<div class="empty-state">This product is no longer available. <a href="products.html">Browse current products</a>.</div>`;
       return;
     }
-    const images = productImageEntries(product);
+    const images = Array.isArray(product.images) ? product.images.map(image => {
+      if (typeof image === "string") return { url: image, alt: product.name };
+      if (!image || typeof image.url !== "string") return null;
+      return { url: image.url, alt: image.alt || product.name };
+    }).filter(Boolean) : [];
     const specifications = product.specifications && typeof product.specifications === "object" ? Object.entries(product.specifications) : [];
     target.innerHTML = `<div class="detail-layout">
       <div class="detail-gallery">

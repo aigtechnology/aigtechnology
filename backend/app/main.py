@@ -91,17 +91,14 @@ def validate_database() -> None:
             raise RuntimeError("Production CORS origins must be explicit HTTPS origins.")
         if not settings.rate_limit_storage_uri:
             raise RuntimeError("RATE_LIMIT_STORAGE_URI must be configured for production rate limiting.")
-        if settings.payment_provider == "mock":
-            raise RuntimeError("Mock payments are not permitted in production.")
-        if settings.payment_provider == "razorpay" and (
-            not (
-                settings.razorpay_key_id.startswith("rzp_test_")
-                or settings.razorpay_key_id.startswith("rzp_live_")
-            )
+        if settings.payment_provider != "razorpay":
+            raise RuntimeError("Production requires Razorpay payments.")
+        if (
+            not settings.razorpay_key_id.startswith("rzp_live_")
             or not settings.razorpay_key_secret
             or not settings.razorpay_webhook_secret
         ):
-            raise RuntimeError("Production validation requires a valid Razorpay test/live key and a webhook secret.")
+            raise RuntimeError("Production validation requires live Razorpay credentials and a webhook secret.")
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
         if revision != "20261107_01":
@@ -341,8 +338,6 @@ def create_order(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     database: Session = Depends(get_db),
 ) -> dict[str, object]:
-    if settings.app_env == "production" and settings.payment_provider == "mock":
-        raise HTTPException(status_code=503, detail="Mock payments are disabled in production")
     return create_website_order(database, payload, idempotency_key or "")
 
 
@@ -396,31 +391,13 @@ async def create_payment_order(
     payment = database.scalar(select(WebsitePayment).where(WebsitePayment.order_id == order.id).with_for_update())
     if payment is None:
         raise HTTPException(status_code=404, detail="Payment attempt not found")
-    if payment.provider == "mock":
-        if settings.app_env == "production":
-            raise HTTPException(status_code=503, detail="Mock payments are disabled in production")
-        payment.status = "Pending"
-        order.payment_status = "Pending"
-        for attempt in payment.attempts:
-            if attempt.status == "Created":
-                attempt.status = "Pending"
-        database.commit()
-        return {
-            "provider": "mock",
-            "test_mode": True,
-            "notice": "TEST MODE — simulated outcomes are not bank transactions.",
-            "payment_id": payment.payment_id,
-            "amount": str(payment.amount),
-            "currency": payment.currency,
-            "outcomes": ["success", "failure"],
-        }
     if payment.provider != "razorpay":
-        raise HTTPException(status_code=503, detail="Unsupported payment provider")
+        raise HTTPException(status_code=503, detail="Only Razorpay payments are supported")
     if not settings.razorpay_webhook_secret:
         raise HTTPException(status_code=503, detail="Razorpay webhook verification is not configured")
     if payment.provider_order_id:
         return {
-            "provider": "razorpay", "test_mode": settings.razorpay_key_id.startswith("rzp_test_"), "key_id": settings.razorpay_key_id,
+            "provider": "razorpay", "key_id": settings.razorpay_key_id,
             "provider_order_id": payment.provider_order_id, "payment_id": payment.payment_id,
             "amount": str(payment.amount), "currency": payment.currency,
         }
@@ -438,7 +415,7 @@ async def create_payment_order(
             attempt.status = "Pending"
     database.commit()
     return {
-        "provider": "razorpay", "test_mode": settings.razorpay_key_id.startswith("rzp_test_"), "key_id": settings.razorpay_key_id,
+        "provider": "razorpay", "key_id": settings.razorpay_key_id,
         "provider_order_id": payment.provider_order_id, "payment_id": payment.payment_id,
         "amount": str(payment.amount), "currency": payment.currency,
     }
@@ -465,57 +442,34 @@ async def verify_payment(
     if payment.status not in {"Pending", "Authorized"}:
         raise HTTPException(status_code=409, detail="Start the payment provider flow before verification")
 
-    if payment.provider == "mock":
-        if settings.app_env == "production":
-            raise HTTPException(status_code=503, detail="Mock payment verification is disabled in production")
-        if payload.outcome not in {"success", "failure"}:
-            raise HTTPException(status_code=422, detail="Choose a test outcome")
-        success = payload.outcome == "success"
-        payment.provider_payment_id = payment.provider_payment_id or f"test_{uuid.uuid4().hex}"
-    elif payment.provider == "razorpay":
-        if not payload.razorpay_order_id or not payload.razorpay_payment_id or not payload.razorpay_signature:
-            raise HTTPException(status_code=422, detail="Razorpay payment verification fields are required")
-        if payload.razorpay_order_id != payment.provider_order_id or not verify_razorpay_payment_signature(
-            payload.razorpay_order_id,
-            payload.razorpay_payment_id,
-            payload.razorpay_signature,
-        ):
-            raise HTTPException(status_code=400, detail="Invalid payment signature")
-        provider_payment = await fetch_razorpay_payment(payload.razorpay_payment_id)
-        if provider_payment.get("order_id") != payment.provider_order_id:
-            raise HTTPException(status_code=400, detail="Payment does not belong to this order")
-        if (
-            provider_payment.get("amount") != int(Decimal(payment.amount) * 100)
-            or provider_payment.get("currency") != payment.currency
-        ):
-            raise HTTPException(status_code=400, detail="Razorpay payment amount or currency does not match the order")
-        conflicting_payment = database.scalar(
-            select(WebsitePayment.id).where(
-                WebsitePayment.provider_payment_id == payload.razorpay_payment_id,
-                WebsitePayment.id != payment.id,
-            )
+    if payment.provider != "razorpay":
+        raise HTTPException(status_code=503, detail="Only Razorpay payments are supported")
+    if not payload.razorpay_order_id or not payload.razorpay_payment_id or not payload.razorpay_signature:
+        raise HTTPException(status_code=422, detail="Razorpay payment verification fields are required")
+    if payload.razorpay_order_id != payment.provider_order_id or not verify_razorpay_payment_signature(
+        payload.razorpay_order_id,
+        payload.razorpay_payment_id,
+        payload.razorpay_signature,
+    ):
+        raise HTTPException(status_code=400, detail="Invalid payment signature")
+    provider_payment = await fetch_razorpay_payment(payload.razorpay_payment_id)
+    if provider_payment.get("order_id") != payment.provider_order_id:
+        raise HTTPException(status_code=400, detail="Payment does not belong to this order")
+    if (
+        provider_payment.get("amount") != int(Decimal(payment.amount) * 100)
+        or provider_payment.get("currency") != payment.currency
+    ):
+        raise HTTPException(status_code=400, detail="Razorpay payment amount or currency does not match the order")
+    conflicting_payment = database.scalar(
+        select(WebsitePayment.id).where(
+            WebsitePayment.provider_payment_id == payload.razorpay_payment_id,
+            WebsitePayment.id != payment.id,
         )
-        if conflicting_payment:
-            raise HTTPException(status_code=409, detail="Razorpay payment is already assigned to another order")
-        payment.provider_payment_id = payload.razorpay_payment_id
-        return await _reconcile_razorpay_payment(database, payment, provider_payment)
-    else:
-        raise HTTPException(status_code=503, detail="Unsupported payment provider")
-
-    payment.status = "Captured" if success else "Failed"
-    order.payment_status = payment.status
-    order.status = "Confirmed" if success else "Cancelled"
-    for attempt in payment.attempts:
-        attempt.status = payment.status
-        attempt.provider_reference = payment.provider_payment_id
-    if success:
-        capture_reservations(database, order)
-    else:
-        release_reservations(database, order)
-    database.commit()
-    if success:
-        await send_order_emails(order, payment)
-    return {"order_id": order.order_id, "payment_status": payment.status, "order_status": order.status}
+    )
+    if conflicting_payment:
+        raise HTTPException(status_code=409, detail="Razorpay payment is already assigned to another order")
+    payment.provider_payment_id = payload.razorpay_payment_id
+    return await _reconcile_razorpay_payment(database, payment, provider_payment)
 
 
 async def _reconcile_razorpay_payment(
@@ -788,17 +742,14 @@ async def refund_payment(
         raise HTTPException(status_code=422, detail="Refund amount exceeds the captured amount")
     provider_refund_id = None
     refund_status = "Processed"
-    if payment.provider == "mock":
-        if settings.app_env == "production":
-            raise HTTPException(status_code=503, detail="Mock refunds are disabled in production")
-    elif payment.provider == "razorpay":
+    if payment.provider == "razorpay":
         if not payment.provider_payment_id:
             raise HTTPException(status_code=409, detail="Provider payment reference is missing")
         result = await create_razorpay_refund(payment.provider_payment_id, str(amount))
         provider_refund_id = str(result["id"])
         refund_status = "Pending" if result.get("status") != "processed" else "Processed"
     else:
-        raise HTTPException(status_code=503, detail="Unsupported payment provider")
+        raise HTTPException(status_code=503, detail="Only Razorpay refunds are supported")
     refund = WebsiteRefund(
         refund_id=str(uuid.uuid4()),
         idempotency_key=idempotency_key,

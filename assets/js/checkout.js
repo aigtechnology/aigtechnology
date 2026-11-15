@@ -213,22 +213,8 @@ async function startPayment(order, customer, panel) {
     body: JSON.stringify({ order_id: order.order_id })
   });
   panel.hidden = false;
-  if (payment.provider === "mock" && payment.test_mode) {
-    panel.innerHTML = `<p class="eyebrow">TEST MODE</p><h2>Simulated payment</h2><p>${escapeHtml(payment.notice)} Choose an outcome for local testing:</p><div class="payment-actions"><button class="button" type="button" data-mock-outcome="success">Simulate successful test payment</button><button class="button button-secondary" type="button" data-mock-outcome="failure">Simulate failed test payment</button></div><p id="payment-status" class="form-status" role="status"></p>`;
-    panel.querySelectorAll("[data-mock-outcome]").forEach(button => button.addEventListener("click", async () => {
-      panel.querySelectorAll("button").forEach(control => { control.disabled = true; });
-      try {
-        await verifyPayment(order, { outcome: button.dataset.mockOutcome }, panel);
-      } catch (error) {
-        showPaymentMessage(panel, error.message, true);
-      } finally {
-        panel.querySelectorAll("button").forEach(control => { control.disabled = false; });
-      }
-    }));
-    return;
-  }
   if (payment.provider !== "razorpay" || !payment.key_id) {
-    throw new Error("No usable payment provider is configured.");
+    throw new Error("Online payment is temporarily unavailable. Please contact AIG Technology support.");
   }
   await loadRazorpayCheckout();
   const checkout = new window.Razorpay({

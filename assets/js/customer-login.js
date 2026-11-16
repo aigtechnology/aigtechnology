@@ -4,7 +4,7 @@ import {
   normalizeMobile,
   saveVerifiedPurchase,
   verifyPurchase
-} from "./purchase-verification.js?v=20261116-purchase-audit";
+} from "./purchase-verification.js?v=20261116-purchase-audit-2";
 
 const form = document.querySelector("#purchase-verify-form");
 const status = document.querySelector("#purchase-verify-status");
@@ -23,7 +23,6 @@ async function handleSubmit(event) {
   event.preventDefault();
   if (!form) return;
 
-  const invoiceType = readField("invoiceType");
   const invoiceNumber = readField("invoiceNumber");
   const mobile = normalizeMobile(readField("mobile"));
 
@@ -43,7 +42,7 @@ async function handleSubmit(event) {
   setStatus("Checking your purchase…");
 
   try {
-    const purchase = await verifyPurchase({ invoiceType, invoiceNumber, mobile });
+    const purchase = await verifyPurchase({ invoiceNumber, mobile });
     saveVerifiedPurchase(purchase);
     setStatus("Purchase verified. Opening your account…", "success");
     window.location.href = "customer-account.html";
@@ -56,12 +55,6 @@ async function handleSubmit(event) {
 
 if (form) {
   form.addEventListener("submit", handleSubmit);
-  form.elements.invoiceType?.addEventListener("change", () => {
-    const isOnline = form.elements.invoiceType.value === "ONLINE";
-    if (form.elements.invoiceNumber) {
-      form.elements.invoiceNumber.placeholder = isOnline ? "Order ID, e.g. AIG-20261114-AB12CD" : "Invoice number, e.g. INV-1001";
-    }
-  });
 }
 
 fillCopyrightYear();

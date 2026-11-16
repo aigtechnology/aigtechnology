@@ -1,9 +1,8 @@
 import {
-  PURCHASE_TYPE_LABELS,
   clearVerifiedPurchase,
   fillCopyrightYear,
   readVerifiedPurchase
-} from "./purchase-verification.js?v=20261116-purchase-audit";
+} from "./purchase-verification.js?v=20261116-purchase-audit-2";
 
 const LOGIN_PAGE = "customer-login.html";
 const profileName = document.querySelector("#customer-phone-display");
@@ -78,8 +77,7 @@ function renderPurchase(purchase) {
   purchases.forEach(record => {
     const sourceRow = document.createElement("li");
     sourceRow.className = "purchase-record purchase-record--source";
-    const type = PURCHASE_TYPE_LABELS[record.invoice_type || record.source] || record.invoice_type || record.source || "Purchase";
-    sourceRow.textContent = `${type} · ${record.reference} · ${formatDate(record.purchase_date)} · ${record.warranty_status || "Verification Required"}`;
+    sourceRow.textContent = `Purchase reference: ${record.reference} · ${formatDate(record.purchase_date)} · ${record.warranty_status || "Verification Required"}`;
     purchaseList.append(sourceRow);
     const products = Array.isArray(record.products) ? record.products : [];
     products.forEach(product => purchaseList.append(productRow(product, productIndex++)));

@@ -668,7 +668,7 @@ async function initServiceEnquiry() {
       (purchase.products?.length ? purchase.products : [{ name: "Purchase" }]).forEach(product => {
         const option = document.createElement("option");
         option.value = String(index);
-        option.textContent = `${product.name || "Product"} · ${purchase.reference} · ${purchase.invoice_type || purchase.source}`;
+        option.textContent = `${product.name || "Product"} · ${purchase.reference}`;
         select.append(option);
       });
     });
@@ -678,10 +678,8 @@ async function initServiceEnquiry() {
     });
   }
   const syncVerifiedFields = () => {
-    const typeField = form.elements.purchaseType;
     const referenceField = form.elements.purchaseReference;
     const mobileField = form.elements.purchaseMobile;
-    if (typeField) typeField.value = selectedPurchase.invoice_type || selectedPurchase.source || "";
     if (referenceField) referenceField.value = selectedPurchase.reference || "";
     if (mobileField) mobileField.value = selectedPurchase.mobile || "";
   };
@@ -702,7 +700,7 @@ async function initServiceEnquiry() {
       description: String(fields.get("description") || "").trim(),
       address: String(fields.get("address") || "").trim(),
       preferredContactTime: String(fields.get("preferredContactTime") || "").trim(),
-      purchaseType: selectedPurchase.invoice_type || selectedPurchase.source || String(fields.get("purchaseType") || "").trim(),
+      purchaseType: selectedPurchase.invoice_type || selectedPurchase.source || "ONLINE",
       purchaseReference: selectedPurchase.reference || String(fields.get("purchaseReference") || "").trim(),
       purchaseMobile: String(selectedPurchase.mobile || fields.get("purchaseMobile") || "").replace(/\D/g, "")
     };
@@ -773,7 +771,7 @@ async function initServiceEnquiry() {
       const detail = String(error?.message || "");
       const isPurchaseFailure = detail.toLowerCase().includes("purchase verification");
       status.textContent = isPurchaseFailure
-        ? "We could not verify that purchase. Check the invoice type, invoice or order number, and the registered mobile number, then try again."
+        ? "We could not verify that purchase. Check the reference number and registered mobile number, then try again."
         : "We could not send your enquiry. Please try again shortly.";
       status.dataset.state = "error";
       console.error("Service enquiry submission failed:", error);

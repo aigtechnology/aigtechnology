@@ -27,7 +27,7 @@
       <div class="container">
         <p class="eyebrow">Customer account</p>
         <h1>Verify your purchase</h1>
-        <p>We identify online orders and GST or non-GST invoices from our purchase records. If an invoice number is shared by both invoice types, we use the registered mobile number to show only the matching purchase.</p>
+        <p>We identify your purchase from our records using the reference number and registered mobile number. If more than one record matches, only the matching purchases are shown after verification.</p>
       </div>
     </section>
     <section class="section">
@@ -35,15 +35,6 @@
         <form id="purchase-verify-form" class="form-panel" novalidate>
           <h2>Purchase details</h2>
           <p class="notice">For an online order, use the order ID from your confirmation page and the mobile number you entered at checkout.</p>
-          <div class="field">
-            <label for="purchase-type">Purchase type (optional)</label>
-            <select id="purchase-type" name="invoiceType">
-              <option value="">Automatically detect</option>
-              <option value="GST">GST invoice</option>
-              <option value="NON_GST">Non-GST invoice</option>
-              <option value="ONLINE">Online order</option>
-            </select>
-          </div>
           <div class="field">
             <label for="invoice-number">Invoice / order number *</label>
             <input id="invoice-number" name="invoiceNumber" maxlength="120" autocomplete="off" required placeholder="Invoice number, e.g. INV-1001">
@@ -65,6 +56,6 @@
       <div class="footer-bottom">© <span data-year></span> AIG TECHNOLOGY</div>
     </div>
   </footer>
-  <script type="module" src="assets/js/customer-login.js?v=20261116-purchase-audit"></script>
+  <script type="module" src="assets/js/customer-login.js?v=20261116-purchase-audit-2"></script>
 </body>
 </html>

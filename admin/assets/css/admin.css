@@ -78,3 +78,25 @@ th { color: var(--admin-muted); font-size: .78rem; text-transform: uppercase; le
 @media (max-width: 1050px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .dashboard-grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { body.admin-app { height: auto; min-height: 100vh; overflow: auto; } .admin-layout { display: block; height: auto; min-height: 100vh; } .admin-sidebar { padding: 12px; overflow: visible; } .admin-content { height: auto; min-height: 0; } .admin-main { overflow: visible; } .admin-brand { padding: 5px 8px 14px; } .admin-nav { display: flex; overflow-x: auto; } .admin-nav-section { display: none; } .admin-nav a { flex: 0 0 auto; } .admin-topbar { min-height: 62px; } .admin-user { display: none; } .page-heading { align-items: start; flex-direction: column; } }
 @media (max-width: 480px) { .stats-grid { grid-template-columns: 1fr; } .admin-main { padding-inline: 14px; } }
+
+/* Premium admin layer: improves scanability and touch comfort without changing admin workflows. */
+body.admin-app { background: #eef3f9; }
+.admin-sidebar { box-shadow: 10px 0 30px rgba(15, 31, 61, .08); }
+.admin-brand img { box-shadow: 0 8px 18px rgba(0, 0, 0, .16); }
+.admin-nav a { min-height: 44px; transition: background-color .18s ease, color .18s ease, transform .18s ease; }
+.admin-nav a:hover { transform: translateX(2px); }
+.admin-topbar { box-shadow: 0 4px 20px rgba(15, 31, 61, .05); }
+.admin-main { scroll-behavior: smooth; }
+.filter-bar, .panel, .stat-card { box-shadow: 0 10px 28px rgba(15, 31, 61, .05); }
+.filter-bar input, .filter-bar select, .login-card input { transition: border-color .18s ease, box-shadow .18s ease; }
+.filter-bar input:focus, .filter-bar select:focus, .login-card input:focus { border-color: #60a5fa; outline: 0; box-shadow: 0 0 0 4px rgba(37, 99, 235, .12); }
+.button { min-height: 42px; box-shadow: 0 6px 14px rgba(37, 99, 235, .16); transition: transform .18s ease, box-shadow .18s ease, filter .18s ease; }
+.button:hover { filter: brightness(1.04); transform: translateY(-1px); box-shadow: 0 9px 18px rgba(37, 99, 235, .22); }
+.button:focus-visible, .admin-nav a:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+tr { transition: background-color .16s ease; }
+tbody tr:hover { background: #f8fbff; }
+.status { border: 1px solid transparent; }
+@media (prefers-reduced-motion: reduce) {
+  .admin-main { scroll-behavior: auto; }
+  .admin-nav a, .button, .filter-bar input, .filter-bar select, .login-card input { transition: none; }
+}

@@ -530,7 +530,7 @@ function renderPromotions(settings) {
   }
   const rail = section.querySelector("[data-promo-rail]");
   if (!rail) return;
-  rail.innerHTML = banners.map(banner => `<article class="promo-card">${banner.image ? `<img src="${escapeHtml(banner.image)}" alt="${escapeHtml(banner.title || "AIG Technology promotion")}" loading="lazy">` : ""}<div><p class="eyebrow">AIG TECHNOLOGY</p><h3>${escapeHtml(banner.title || "Explore our catalogue")}</h3>${banner.text ? `<p>${escapeHtml(banner.text)}</p>` : ""}${banner.href ? `<a class="button button-small" href="${escapeHtml(banner.href)}">Explore</a>` : ""}</div></article>`).join("");
+  rail.innerHTML = banners.map(banner => `<article class="promo-card">${banner.image ? (banner.href ? `<a class="promo-card__media-link" href="${escapeHtml(banner.href)}" aria-label="${escapeHtml(banner.title || "Explore AIG Technology")}"><img src="${escapeHtml(banner.image)}" alt="${escapeHtml(banner.title || "AIG Technology promotion")}" loading="lazy"></a>` : `<img src="${escapeHtml(banner.image)}" alt="${escapeHtml(banner.title || "AIG Technology promotion")}" loading="lazy">`) : ""}<div><p class="eyebrow">AIG TECHNOLOGY</p><h3>${escapeHtml(banner.title || "Explore our catalogue")}</h3>${banner.text ? `<p>${escapeHtml(banner.text)}</p>` : ""}${banner.href ? `<a class="button button-small" href="${escapeHtml(banner.href)}">Explore</a>` : ""}</div></article>`).join("");
   section.hidden = false;
 }
 
@@ -554,7 +554,7 @@ function renderHomepageVideos(settings) {
   }
   const rail = section.querySelector("[data-homepage-video-rail]");
   if (!rail) return;
-  rail.innerHTML = videos.map(video => `<article class="homepage-video-card"><video controls muted playsinline preload="metadata"${video.poster ? ` poster="${escapeHtml(video.poster)}"` : ""}><source src="${escapeHtml(video.video)}"></video>${video.title ? `<h3>${escapeHtml(video.title)}</h3>` : ""}</article>`).join("");
+  rail.innerHTML = videos.map(video => `<article class="homepage-video-card">${video.href ? `<a class="homepage-video-card__media-link" href="${escapeHtml(video.href)}" aria-label="${escapeHtml(video.title || "Explore AIG Technology")}"><video controls muted playsinline preload="metadata"${video.poster ? ` poster="${escapeHtml(video.poster)}"` : ""}><source src="${escapeHtml(video.video)}"></video></a>` : `<video controls muted playsinline preload="metadata"${video.poster ? ` poster="${escapeHtml(video.poster)}"` : ""}><source src="${escapeHtml(video.video)}"></video>`}${video.title ? `<h3>${escapeHtml(video.title)}</h3>` : ""}${video.href ? `<a class="button button-small" href="${escapeHtml(video.href)}">Explore</a>` : ""}</article>`).join("");
   section.hidden = false;
 }
 

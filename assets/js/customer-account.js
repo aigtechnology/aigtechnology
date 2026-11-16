@@ -3,7 +3,7 @@ import {
   clearVerifiedPurchase,
   fillCopyrightYear,
   readVerifiedPurchase
-} from "./purchase-verification.js?v=20261114-purchase";
+} from "./purchase-verification.js?v=20261116-purchase-audit";
 
 const LOGIN_PAGE = "customer-login.html";
 const profileName = document.querySelector("#customer-phone-display");
@@ -58,30 +58,38 @@ function productRow(product, index) {
 }
 
 function renderPurchase(purchase) {
+  const purchases = Array.isArray(purchase.purchases) && purchase.purchases.length ? purchase.purchases : [purchase];
+  const firstPurchase = purchases[0];
   if (profileName) {
-    profileName.textContent = purchase.customer_name || "Verified customer";
+    profileName.textContent = firstPurchase.customer_name || "Verified customer";
   }
   if (purchaseStatus) {
-    purchaseStatus.textContent = `Verified against ${PURCHASE_TYPE_LABELS[purchase.source] || purchase.source} ${purchase.reference}.`;
+    purchaseStatus.textContent = `${purchases.length} purchase record${purchases.length === 1 ? "" : "s"} verified.`;
   }
   if (purchaseSource) {
     purchaseSource.textContent = [
-      purchase.mobile ? `Registered mobile: ${purchase.mobile}` : "",
-      purchase.email ? `Email: ${purchase.email}` : "",
-      `Purchase date: ${formatDate(purchase.purchase_date)}`
+      firstPurchase.mobile ? `Registered mobile: ${firstPurchase.mobile}` : "",
+      firstPurchase.email ? `Email: ${firstPurchase.email}` : ""
     ].filter(Boolean).join(" · ");
   }
   if (!purchaseList) return;
-  const products = Array.isArray(purchase.products) ? purchase.products : [];
   purchaseList.replaceChildren();
-  if (!products.length) {
+  let productIndex = 0;
+  purchases.forEach(record => {
+    const sourceRow = document.createElement("li");
+    sourceRow.className = "purchase-record purchase-record--source";
+    const type = PURCHASE_TYPE_LABELS[record.invoice_type || record.source] || record.invoice_type || record.source || "Purchase";
+    sourceRow.textContent = `${type} · ${record.reference} · ${formatDate(record.purchase_date)} · ${record.warranty_status || "Verification Required"}`;
+    purchaseList.append(sourceRow);
+    const products = Array.isArray(record.products) ? record.products : [];
+    products.forEach(product => purchaseList.append(productRow(product, productIndex++)));
+  });
+  if (!productIndex) {
     const empty = document.createElement("li");
     empty.className = "purchase-record";
     empty.textContent = "No product lines were recorded for this purchase.";
     purchaseList.append(empty);
-    return;
   }
-  products.forEach((product, index) => purchaseList.append(productRow(product, index)));
 }
 
 function signOut() {

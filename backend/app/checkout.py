@@ -1,6 +1,8 @@
 import hashlib
 import hmac
 import json
+import secrets
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -26,6 +28,22 @@ from .schemas import CheckoutItem, CreateOrderRequest
 
 ZERO = Decimal("0.00")
 RESERVATION_LIFETIME = timedelta(minutes=20)
+
+
+def _order_id_part(value: str, fallback: str, limit: int) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9]", "", value or "").upper()
+    return (cleaned[:limit] or fallback)
+
+
+def _new_order_id(database: Session, customer_name: str, items: list[tuple[Product, Inventory, int]]) -> str:
+    name_part = _order_id_part(customer_name.split()[0] if customer_name.strip() else "", "CUS", 3)
+    distinct_skus = {product.sku for product, _, _ in items}
+    sku_part = _order_id_part(next(iter(distinct_skus)) if len(distinct_skus) == 1 else "", "ITEM", 40)
+    for _ in range(30):
+        candidate = f"{name_part}-{sku_part}-{secrets.randbelow(9000) + 1000}"
+        if database.scalar(select(WebsiteOrder.id).where(WebsiteOrder.order_id == candidate)) is None:
+            return candidate
+    raise HTTPException(status_code=503, detail="Could not allocate a unique order reference")
 
 
 def _normalized_items(items: list[CheckoutItem]) -> list[CheckoutItem]:
@@ -157,7 +175,7 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
     database.add(WebsiteAddress(customer_id=customer.id, **shipping))
     if payload.billing_address:
         database.add(WebsiteAddress(customer_id=customer.id, is_billing=True, **billing))
-    order_id = str(uuid.uuid4())
+    order_id = _new_order_id(database, payload.customer.full_name, locked)
     token = _lookup_token(order_id)
     order = WebsiteOrder(
         order_id=order_id,

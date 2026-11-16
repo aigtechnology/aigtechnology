@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "./api-config.js?v=20261114-purchase";
+import { API_BASE_URL } from "./api-config.js?v=20261116-purchase-audit";
 
 export const PURCHASE_STORAGE_KEY = "aig_purchase_verification";
 export const MOBILE_PATTERN = /^[6-9]\d{9}$/;
@@ -15,13 +15,13 @@ export function normalizeMobile(value) {
   return digits;
 }
 
-export async function verifyPurchase({ invoiceType, invoiceNumber, mobile }) {
+export async function verifyPurchase({ invoiceType = "", invoiceNumber, mobile }) {
   if (!API_BASE_URL) throw new Error("The API address is not configured for this site.");
   const response = await fetch(`${API_BASE_URL}/customer/verify-purchase`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      invoice_type: invoiceType,
+      invoice_type: invoiceType || null,
       invoice_number: invoiceNumber,
       mobile
     })

@@ -4,7 +4,7 @@ import {
   normalizeMobile,
   saveVerifiedPurchase,
   verifyPurchase
-} from "./purchase-verification.js?v=20261114-purchase";
+} from "./purchase-verification.js?v=20261116-purchase-audit";
 
 const form = document.querySelector("#purchase-verify-form");
 const status = document.querySelector("#purchase-verify-status");
@@ -27,11 +27,6 @@ async function handleSubmit(event) {
   const invoiceNumber = readField("invoiceNumber");
   const mobile = normalizeMobile(readField("mobile"));
 
-  if (!invoiceType) {
-    setStatus("Choose whether this is a GST invoice, non-GST invoice, or online order.", "error");
-    form.elements.invoiceType?.focus();
-    return;
-  }
   if (!invoiceNumber) {
     setStatus("Enter the invoice or order number printed on your bill.", "error");
     form.elements.invoiceNumber?.focus();

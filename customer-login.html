@@ -27,7 +27,7 @@
       <div class="container">
         <p class="eyebrow">Customer account</p>
         <h1>Verify your purchase</h1>
-        <p>Invoice numbers can repeat between GST and non-GST bills, so we check the invoice type, the invoice or order number, and the mobile number registered with the purchase.</p>
+        <p>We identify online orders and GST or non-GST invoices from our purchase records. If an invoice number is shared by both invoice types, we use the registered mobile number to show only the matching purchase.</p>
       </div>
     </section>
     <section class="section">
@@ -36,9 +36,9 @@
           <h2>Purchase details</h2>
           <p class="notice">For an online order, use the order ID from your confirmation page and the mobile number you entered at checkout.</p>
           <div class="field">
-            <label for="purchase-type">Purchase type *</label>
-            <select id="purchase-type" name="invoiceType" required>
-              <option value="">Choose purchase type</option>
+            <label for="purchase-type">Purchase type (optional)</label>
+            <select id="purchase-type" name="invoiceType">
+              <option value="">Automatically detect</option>
               <option value="GST">GST invoice</option>
               <option value="NON_GST">Non-GST invoice</option>
               <option value="ONLINE">Online order</option>
@@ -62,9 +62,9 @@
   </main>
   <footer class="site-footer">
     <div class="container">
-      <div class="footer-bottom">Â© <span data-year></span> AIG TECHNOLOGY</div>
+      <div class="footer-bottom">© <span data-year></span> AIG TECHNOLOGY</div>
     </div>
   </footer>
-  <script type="module" src="assets/js/customer-login.js?v=20261114-purchase"></script>
+  <script type="module" src="assets/js/customer-login.js?v=20261116-purchase-audit"></script>
 </body>
 </html>

@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
@@ -38,8 +38,11 @@ from .business_models import (
     Product,
     ReturnRecord,
     WebsiteOrder,
+    WebsiteCustomer,
     WebsitePayment,
     WebsiteRefund,
+    OfflinePurchase,
+    ServiceRequest,
 )
 from .payment_providers import (
     create_razorpay_order,
@@ -63,6 +66,9 @@ from .schemas import (
     DispatchSettingsUpdate,
     UserResponse,
     VerifyPaymentRequest,
+    PurchaseVerificationRequest,
+    ServiceRequestCreate,
+    ServiceRequestUpdate,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -101,7 +107,7 @@ def validate_database() -> None:
             raise RuntimeError("Production validation requires live Razorpay credentials and a webhook secret.")
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-        if revision != "20261114_03":
+        if revision != "20261116_04":
             raise RuntimeError("Database migrations are not at the expected Alembic revision.")
         return
     with engine.connect():
@@ -341,6 +347,182 @@ def create_order(
     database: Session = Depends(get_db),
 ) -> dict[str, object]:
     return create_website_order(database, payload, idempotency_key or "")
+
+
+def _normalize_mobile(value: str) -> str:
+    digits = "".join(character for character in str(value) if character.isdigit())
+    if len(digits) == 12 and digits.startswith("91"):
+        return digits[2:]
+    if len(digits) == 11 and digits.startswith("0"):
+        return digits[1:]
+    return digits
+
+
+def _warranty_status(purchase_date: datetime, warranty_months: int) -> tuple[str, str | None]:
+    if not warranty_months or warranty_months <= 0:
+        return "Warranty Not Available", None
+    start = purchase_date if purchase_date.tzinfo else purchase_date.replace(tzinfo=UTC)
+    expiry = start + timedelta(days=round(warranty_months * 30.4375))
+    return ("Under Warranty" if expiry >= datetime.now(UTC) else "Warranty Expired", expiry.isoformat())
+
+
+def _purchase_record_from_offline(item: OfflinePurchase) -> dict[str, object]:
+    warranty_status, warranty_expiry = _warranty_status(item.purchase_date, item.warranty_months)
+    return {
+        "source": item.invoice_type,
+        "invoice_type": item.invoice_type,
+        "reference": item.invoice_number,
+        "customer_name": item.customer_name,
+        "mobile": item.mobile,
+        "email": item.email,
+        "purchase_date": item.purchase_date.isoformat(),
+        "warranty_status": warranty_status,
+        "warranty_expiry": warranty_expiry,
+        "service_eligibility": "Eligible",
+        "products": [{
+            "name": item.product_name,
+            "sku": item.product_model or "ITEM",
+            "model": item.product_model,
+            "serial_number": item.serial_number,
+            "quantity": 1,
+            "warranty_months": item.warranty_months,
+            "invoice_amount": str(item.invoice_amount),
+            "warranty_status": warranty_status,
+        }],
+    }
+
+
+def _purchase_record_from_online(order: WebsiteOrder) -> dict[str, object]:
+    return {
+        "source": "ONLINE",
+        "invoice_type": "ONLINE",
+        "reference": order.order_id,
+        "customer_name": order.customer.full_name,
+        "mobile": order.customer.phone,
+        "email": order.customer.email,
+        "purchase_date": order.created_at.isoformat(),
+        "warranty_status": "Verification Required",
+        "warranty_expiry": None,
+        "service_eligibility": "Eligible" if order.payment_status == "Captured" else "Payment not captured",
+        "products": [{
+            "name": item.name,
+            "sku": item.sku,
+            "model": item.sku,
+            "serial_number": "",
+            "quantity": item.quantity,
+            "warranty_months": 0,
+            "invoice_amount": str(item.subtotal),
+            "warranty_status": "Verification Required",
+        } for item in order.items],
+    }
+
+
+def _find_verified_purchases(database: Session, payload: PurchaseVerificationRequest) -> list[dict[str, object]]:
+    mobile = _normalize_mobile(payload.mobile)
+    records: list[dict[str, object]] = []
+    if payload.invoice_type in {None, "GST", "NON_GST"}:
+        query = select(OfflinePurchase).where(
+            OfflinePurchase.mobile == mobile,
+            OfflinePurchase.invoice_number == payload.invoice_number,
+        )
+        if payload.invoice_type:
+            query = query.where(OfflinePurchase.invoice_type == payload.invoice_type)
+        records.extend(_purchase_record_from_offline(item) for item in database.scalars(query.order_by(OfflinePurchase.purchase_date.desc())).all())
+    if payload.invoice_type in {None, "ONLINE"}:
+        order = database.scalar(
+            select(WebsiteOrder)
+            .join(WebsiteCustomer, WebsiteOrder.customer_id == WebsiteCustomer.id)
+            .options(joinedload(WebsiteOrder.customer), selectinload(WebsiteOrder.items))
+            .where(WebsiteCustomer.phone == mobile, WebsiteOrder.order_id == payload.invoice_number)
+        )
+        if order and order.payment_status == "Captured":
+            records.append(_purchase_record_from_online(order))
+    return records
+
+
+@app.post("/api/customer/verify-purchase", tags=["customer service"])
+@limiter.limit("10/minute")
+def verify_customer_purchase(
+    request: Request,
+    payload: PurchaseVerificationRequest,
+    database: Session = Depends(get_db),
+) -> dict[str, object]:
+    records = _find_verified_purchases(database, payload)
+    if not records:
+        raise HTTPException(status_code=404, detail="No verified purchase was found for that mobile number and reference.")
+    first = records[0]
+    return {**first, "verified": True, "purchases": records}
+
+
+@app.post("/api/service-requests", tags=["customer service"])
+@limiter.limit("5/minute")
+def create_service_request(
+    request: Request,
+    payload: ServiceRequestCreate,
+    database: Session = Depends(get_db),
+) -> dict[str, object]:
+    verification = _find_verified_purchases(database, PurchaseVerificationRequest(
+        invoice_type=payload.purchase_type,
+        invoice_number=payload.purchase_reference,
+        mobile=payload.purchase_mobile,
+    ))
+    if not verification:
+        raise HTTPException(status_code=403, detail="Purchase verification is required before booking a service.")
+    reference_id = f"SR-{datetime.now(UTC):%Y%m%d}-{uuid.uuid4().hex[:8].upper()}"
+    service_request = ServiceRequest(
+        reference_id=reference_id,
+        customer_name=payload.customer_name,
+        phone=payload.phone,
+        email=payload.email,
+        service_category=payload.service_category,
+        device_type=payload.device_type,
+        brand_model=payload.brand_model or "",
+        problem_description=payload.problem_description,
+        address=payload.address,
+        preferred_contact_time=payload.preferred_contact_time or "",
+        image_urls=payload.image_urls,
+        purchase_type=payload.purchase_type,
+        purchase_reference=payload.purchase_reference,
+        purchase_mobile=payload.purchase_mobile,
+    )
+    database.add(service_request)
+    database.commit()
+    return {"reference_id": reference_id, "status": service_request.status, "verified_purchase": verification[0]}
+
+
+@app.get("/api/admin/service-requests", tags=["customer service"])
+def list_service_requests(
+    user: AdminUser = Depends(require_admin),
+    database: Session = Depends(get_db),
+) -> list[dict[str, object]]:
+    requests = database.scalars(select(ServiceRequest).order_by(ServiceRequest.created_at.desc()).limit(500)).all()
+    return [{
+        "reference_id": item.reference_id, "customer_name": item.customer_name, "phone": item.phone,
+        "email": item.email, "service_category": item.service_category, "device_type": item.device_type,
+        "brand_model": item.brand_model, "problem_description": item.problem_description,
+        "address": item.address, "preferred_contact_time": item.preferred_contact_time,
+        "image_urls": item.image_urls or [], "purchase_type": item.purchase_type,
+        "purchase_reference": item.purchase_reference, "status": item.status,
+        "assigned_to": item.assigned_to, "internal_notes": item.internal_notes,
+        "created_at": item.created_at.isoformat(), "updated_at": item.updated_at.isoformat(),
+    } for item in requests]
+
+
+@app.patch("/api/admin/service-requests/{reference_id}", tags=["customer service"])
+def update_service_request(
+    reference_id: str,
+    payload: ServiceRequestUpdate,
+    user: AdminUser = Depends(require_admin),
+    database: Session = Depends(get_db),
+) -> dict[str, str]:
+    item = database.scalar(select(ServiceRequest).where(ServiceRequest.reference_id == reference_id).with_for_update())
+    if item is None:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    item.status = payload.status
+    item.assigned_to = payload.assigned_to
+    item.internal_notes = payload.internal_notes
+    database.commit()
+    return {"reference_id": item.reference_id, "status": item.status}
 
 
 def _accessible_order(

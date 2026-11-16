@@ -75,7 +75,7 @@ class CatalogSyncRequest(BaseModel):
 class VerifyPaymentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    order_id: str = Field(min_length=36, max_length=36)
+    order_id: str = Field(min_length=3, max_length=80)
     payment_id: str = Field(min_length=36, max_length=36)
     outcome: str | None = Field(default=None, pattern=r"^(success|failure)$")
     razorpay_order_id: str | None = Field(default=None, max_length=120)
@@ -86,7 +86,7 @@ class VerifyPaymentRequest(BaseModel):
 class PaymentOrderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    order_id: str = Field(min_length=36, max_length=36)
+    order_id: str = Field(min_length=3, max_length=80)
 
 
 class RefundRequest(BaseModel):
@@ -105,3 +105,37 @@ class DispatchSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     working_days: int = Field(ge=0, le=30)
+
+
+class PurchaseVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    invoice_type: Literal["GST", "NON_GST", "ONLINE"] | None = None
+    invoice_number: str = Field(min_length=1, max_length=120)
+    mobile: str = Field(pattern=r"^[6-9][0-9]{9}$")
+
+
+class ServiceRequestCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    customer_name: str = Field(min_length=2, max_length=120)
+    phone: str = Field(pattern=r"^[6-9][0-9]{9}$")
+    email: str | None = Field(default=None, max_length=254)
+    service_category: str = Field(min_length=2, max_length=100)
+    device_type: str = Field(min_length=2, max_length=40)
+    brand_model: str | None = Field(default=None, max_length=160)
+    problem_description: str = Field(min_length=10, max_length=1800)
+    address: str = Field(min_length=3, max_length=500)
+    preferred_contact_time: str | None = Field(default=None, max_length=80)
+    image_urls: list[str] = Field(default_factory=list, max_length=6)
+    purchase_type: Literal["GST", "NON_GST", "ONLINE"]
+    purchase_reference: str = Field(min_length=1, max_length=120)
+    purchase_mobile: str = Field(pattern=r"^[6-9][0-9]{9}$")
+
+
+class ServiceRequestUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["New Request", "Under Review", "Approved", "Technician Assigned", "Inspection Scheduled", "In Progress", "Waiting for Parts", "Completed", "Rejected", "Cancelled"]
+    assigned_to: str | None = Field(default=None, max_length=120)
+    internal_notes: str | None = Field(default=None, max_length=5000)

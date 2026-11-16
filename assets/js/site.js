@@ -653,8 +653,39 @@ async function initServiceEnquiry() {
   }
   const gate = document.createElement("p");
   gate.className = "notice notice-success";
-  gate.textContent = `Verified purchase: ${verifiedPurchase.reference} (${verifiedPurchase.source}).`;
+  const verifiedPurchases = Array.isArray(verifiedPurchase.purchases) && verifiedPurchase.purchases.length
+    ? verifiedPurchase.purchases
+    : [verifiedPurchase];
+  let selectedPurchase = verifiedPurchases[0];
+  gate.textContent = `${verifiedPurchases.length} purchase record${verifiedPurchases.length === 1 ? "" : "s"} verified. Select the product you need help with below.`;
   form.before(gate);
+  if (verifiedPurchases.length > 1) {
+    const field = document.createElement("div");
+    field.className = "field verified-purchase-picker";
+    field.innerHTML = '<label for="verified-purchase">Purchased product *</label><select id="verified-purchase" name="verifiedPurchase" required></select>';
+    const select = field.querySelector("select");
+    verifiedPurchases.forEach((purchase, index) => {
+      (purchase.products?.length ? purchase.products : [{ name: "Purchase" }]).forEach(product => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = `${product.name || "Product"} · ${purchase.reference} · ${purchase.invoice_type || purchase.source}`;
+        select.append(option);
+      });
+    });
+    form.querySelector(".form-grid")?.prepend(field);
+    select.addEventListener("change", () => {
+      selectedPurchase = verifiedPurchases[Number(select.value)] || verifiedPurchases[0];
+    });
+  }
+  const syncVerifiedFields = () => {
+    const typeField = form.elements.purchaseType;
+    const referenceField = form.elements.purchaseReference;
+    const mobileField = form.elements.purchaseMobile;
+    if (typeField) typeField.value = selectedPurchase.invoice_type || selectedPurchase.source || "";
+    if (referenceField) referenceField.value = selectedPurchase.reference || "";
+    if (mobileField) mobileField.value = selectedPurchase.mobile || "";
+  };
+  syncVerifiedFields();
   form.addEventListener("submit", async event => {
     event.preventDefault();
     const status = byId("service-enquiry-status");
@@ -671,9 +702,9 @@ async function initServiceEnquiry() {
       description: String(fields.get("description") || "").trim(),
       address: String(fields.get("address") || "").trim(),
       preferredContactTime: String(fields.get("preferredContactTime") || "").trim(),
-      purchaseType: String(fields.get("purchaseType") || "").trim(),
-      purchaseReference: String(fields.get("purchaseReference") || "").trim(),
-      purchaseMobile: String(fields.get("purchaseMobile") || "").replace(/\D/g, "")
+      purchaseType: selectedPurchase.invoice_type || selectedPurchase.source || String(fields.get("purchaseType") || "").trim(),
+      purchaseReference: selectedPurchase.reference || String(fields.get("purchaseReference") || "").trim(),
+      purchaseMobile: String(selectedPurchase.mobile || fields.get("purchaseMobile") || "").replace(/\D/g, "")
     };
     const contactDigits = data.phone.replace(/\D/g, "");
     if (data.customerName.length < 2 || data.customerName.length > 100) {

@@ -170,7 +170,7 @@ class WebsiteOrder(Base):
     __tablename__ = "website_orders"
 
     id = Column(Integer, primary_key=True)
-    order_id = Column(String(36), unique=True, nullable=False, index=True)
+    order_id = Column(String(80), unique=True, nullable=False, index=True)
     idempotency_key = Column(String(80), unique=True, nullable=False)
     request_fingerprint = Column(String(64), nullable=False)
     customer_id = Column(ForeignKey("website_customers.id"), nullable=False, index=True)
@@ -342,3 +342,50 @@ class AuditLog(Base):
     entity_id = Column(String(120))
     details = Column(JSON)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class OfflinePurchase(Base):
+    __tablename__ = "offline_purchases"
+    __table_args__ = (UniqueConstraint(
+        "invoice_type", "invoice_number", "mobile", "product_model", "serial_number",
+        name="uq_offline_purchase_identity",
+    ),)
+
+    id = Column(Integer, primary_key=True)
+    invoice_type = Column(String(20), nullable=False, index=True)
+    invoice_number = Column(String(120), nullable=False, index=True)
+    customer_name = Column(String(120), nullable=False)
+    mobile = Column(String(20), nullable=False, index=True)
+    email = Column(String(254))
+    product_name = Column(String(255), nullable=False)
+    product_model = Column(String(160), nullable=False, default="")
+    serial_number = Column(String(160), nullable=False, default="")
+    purchase_date = Column(DateTime(timezone=True), nullable=False)
+    warranty_months = Column(Integer, nullable=False, default=0)
+    invoice_amount = Column(Numeric(12, 2), nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ServiceRequest(Base):
+    __tablename__ = "service_requests"
+
+    id = Column(Integer, primary_key=True)
+    reference_id = Column(String(80), unique=True, nullable=False, index=True)
+    customer_name = Column(String(120), nullable=False)
+    phone = Column(String(20), nullable=False, index=True)
+    email = Column(String(254))
+    service_category = Column(String(100), nullable=False)
+    device_type = Column(String(40), nullable=False)
+    brand_model = Column(String(160))
+    problem_description = Column(Text, nullable=False)
+    address = Column(Text, nullable=False)
+    preferred_contact_time = Column(String(80))
+    image_urls = Column(JSON, nullable=False, default=list)
+    purchase_type = Column(String(20))
+    purchase_reference = Column(String(120))
+    purchase_mobile = Column(String(20))
+    status = Column(String(40), nullable=False, default="New Request", index=True)
+    assigned_to = Column(String(120))
+    internal_notes = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

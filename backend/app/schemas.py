@@ -19,11 +19,21 @@ class SessionResponse(BaseModel):
     csrf_token: str
 
 
+class CheckoutConfiguration(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ram: str | None = Field(default=None, max_length=80)
+    hdd: str | None = Field(default=None, max_length=80)
+    ssd: str | None = Field(default=None, max_length=80)
+    combined: str | None = Field(default=None, max_length=80)
+
+
 class CheckoutItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     sku: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9._-]+$")
     quantity: int = Field(ge=1, le=10)
+    configuration: CheckoutConfiguration | None = None
 
 
 class CheckoutValidateRequest(BaseModel):
@@ -70,6 +80,8 @@ class CatalogSyncRequest(BaseModel):
     stock_quantity: int | None = Field(default=None, ge=0, le=100000)
     published: bool
     image_url: str | None = Field(default=None, max_length=2048)
+    specifications: dict[str, str] = Field(default_factory=dict, max_length=30)
+    upgrade_options: dict[str, list[dict[str, object]]] = Field(default_factory=dict, max_length=4)
 
 
 class VerifyPaymentRequest(BaseModel):

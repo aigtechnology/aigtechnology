@@ -29,7 +29,9 @@ export function saveCatalogProduct(catalogId, product, idToken) {
       price: product.price,
       stock_quantity: product.stockQuantity,
       published: product.published,
-      image_url: typeof firstImage === "string" ? firstImage : firstImage?.url || null
+      image_url: typeof firstImage === "string" ? firstImage : firstImage?.url || null,
+      specifications: product.specifications || {},
+      upgrade_options: product.upgradeOptions || {}
     })
   });
 }

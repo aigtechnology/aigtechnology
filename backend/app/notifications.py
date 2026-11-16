@@ -52,6 +52,7 @@ def _order_text(order: WebsiteOrder, payment: WebsitePayment) -> tuple[str, str]
     customer = order.customer
     items = "\n".join(
         f"- {item.name} ({item.sku}) x {item.quantity}: INR {item.subtotal}"
+        + (f"; configuration: {item.configuration}" if item.configuration else "")
         for item in order.items
     )
     address = order.shipping_address or {}

@@ -107,7 +107,7 @@ def validate_database() -> None:
             raise RuntimeError("Production validation requires live Razorpay credentials and a webhook secret.")
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-        if revision != "20261116_04":
+        if revision != "20261116_05":
             raise RuntimeError("Database migrations are not at the expected Alembic revision.")
         return
     with engine.connect():
@@ -213,6 +213,9 @@ def _serialize_website_order(order: WebsiteOrder) -> dict[str, object]:
         "total_amount": str(order.total_amount),
         "items": [
             {"name": item.name, "sku": item.sku, "quantity": item.quantity,
+             "base_unit_price": str(item.base_unit_price or item.unit_price),
+             "upgrade_amount": str(item.upgrade_amount or 0),
+             "configuration": item.configuration or {},
              "unit_price": str(item.unit_price), "subtotal": str(item.subtotal)}
             for item in order.items
         ],
@@ -239,6 +242,9 @@ def _serialize_website_order_admin_detail(order: WebsiteOrder) -> dict[str, obje
         "billing_address": order.billing_address,
         "items": [
             {"name": item.name, "sku": item.sku, "quantity": item.quantity,
+             "base_unit_price": str(item.base_unit_price or item.unit_price),
+             "upgrade_amount": str(item.upgrade_amount or 0),
+             "configuration": item.configuration or {},
              "unit_price": str(item.unit_price), "subtotal": str(item.subtotal)}
             for item in order.items
         ],
@@ -291,6 +297,8 @@ def sync_catalog_product(
             is_active=payable,
             image_url=payload.image_url,
             catalog_stock_quantity=payload.stock_quantity,
+            structured_specifications=payload.specifications,
+            upgrade_options=payload.upgrade_options,
         )
         database.add(product)
         database.flush()
@@ -304,6 +312,8 @@ def sync_catalog_product(
         product.selling_price = synced_price
         product.is_active = payable
         product.image_url = payload.image_url
+        product.structured_specifications = payload.specifications
+        product.upgrade_options = payload.upgrade_options
         inventory = database.scalar(select(Inventory).where(Inventory.product_id == product.id).with_for_update())
         if inventory is None:
             inventory = Inventory(product_id=product.id, available_quantity=payload.stock_quantity or 0)

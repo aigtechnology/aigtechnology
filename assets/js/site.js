@@ -323,6 +323,53 @@ function cartButton(product) {
     <button class="button button-small button-buy-now" type="button" data-buy-now ${attributes}>Buy now</button>`;
 }
 
+function upgradeOptions(product) {
+  const source = product.upgradeOptions && typeof product.upgradeOptions === "object" ? product.upgradeOptions : {};
+  return Object.fromEntries(["ram", "hdd", "ssd", "combined"].map(type => [type,
+    Array.isArray(source[type]) ? source[type].filter(option => option && option.id && option.label && option.available !== false) : []
+  ]));
+}
+
+function canPurchaseProduct(product) {
+  return Boolean(product?.sku && Number(product.price) > 0 && Number(product.stockQuantity) > 0);
+}
+
+function productConfigurator(product) {
+  const options = upgradeOptions(product);
+  if (!canPurchaseProduct(product) || !Object.values(options).some(list => list.length)) return "";
+  const select = (type, label) => options[type].length ? `<label class="configurator-field"><span>${label}</span><select data-upgrade-select="${type}"><option value="">Choose ${label.toLowerCase()}</option>${options[type].map(option => `<option value="${escapeHtml(option.id)}" data-price="${escapeHtml(option.price || 0)}">${escapeHtml(option.label)}${Number(option.price || 0) ? ` (+${escapeHtml(formatPrice(option.price))})` : " (Included)"}</option>`).join("")}</select></label>` : "";
+  return `<section class="product-configurator" data-product-configurator><h2>Customize Your Configuration</h2><p class="configurator-help">Choose only the upgrades supported by this product. Prices are verified again at checkout.</p><div class="configurator-grid">${select("ram", "RAM")}${select("hdd", "HDD")}${select("ssd", "SSD")}${select("combined", "RAM + SSD package")}</div><div class="configurator-summary" data-configurator-summary>Base price: ${escapeHtml(formatPrice(product.price))}</div><button class="button button-secondary button-small" type="button" data-configurator-reset>Reset to default</button></section>`;
+}
+
+function setupProductConfigurator(root, product) {
+  const panel = root.querySelector("[data-product-configurator]");
+  if (!panel) return;
+  const selects = [...panel.querySelectorAll("[data-upgrade-select]")];
+  const base = Number(product.price || 0);
+  const image = Array.isArray(product.images) ? product.images[0]?.url || product.images[0] : "";
+  const update = () => {
+    const combined = selects.find(select => select.dataset.upgradeSelect === "combined");
+    if (combined?.value) selects.filter(select => select !== combined).forEach(select => { select.value = ""; select.disabled = true; });
+    else selects.forEach(select => { if (select !== combined) select.disabled = false; });
+    const chosen = selects.filter(select => select.value).map(select => ({ type: select.dataset.upgradeSelect, id: select.value, label: select.selectedOptions[0].textContent.replace(/\s*\([^)]*\)$/, ""), price: Number(select.selectedOptions[0].dataset.price || 0) }));
+    const extra = chosen.reduce((sum, option) => sum + option.price, 0);
+    const summary = panel.querySelector("[data-configurator-summary]");
+    summary.innerHTML = `<strong>Final price: ${escapeHtml(formatPrice(base + extra))}</strong>${chosen.length ? `<span>${chosen.map(option => `${escapeHtml(option.label)} (+${escapeHtml(formatPrice(option.price))})`).join(" · ")}</span>` : "<span>No upgrade selected</span>"}`;
+    const configuration = Object.fromEntries(chosen.map(option => [option.type, option.id]));
+    panel.dataset.configuration = JSON.stringify(configuration);
+  };
+  selects.forEach(select => select.addEventListener("change", update));
+  panel.querySelector("[data-configurator-reset]")?.addEventListener("click", () => { selects.forEach(select => { select.value = ""; select.disabled = false; }); update(); });
+  root.querySelectorAll("[data-configured-add], [data-configured-buy]").forEach(button => button.addEventListener("click", () => {
+    try {
+      addCartItem({ sku: product.sku, name: product.name, image, configuration: JSON.parse(panel.dataset.configuration || "{}") });
+      if (button.hasAttribute("data-configured-buy")) window.location.href = "checkout.html";
+      else button.textContent = "Added to cart";
+    } catch (error) { button.textContent = error.message; }
+  }));
+  update();
+}
+
 function setupCartActions(root) {
   root.querySelectorAll("[data-add-cart], [data-buy-now]").forEach(button => button.addEventListener("click", () => {
     try {
@@ -572,7 +619,9 @@ async function initProductDetails() {
       if (!image || typeof image.url !== "string") return null;
       return { url: image.url, alt: image.alt || product.name };
     }).filter(Boolean) : [];
-    const specifications = product.specifications && typeof product.specifications === "object" ? Object.entries(product.specifications) : [];
+    const specifications = product.specifications && typeof product.specifications === "object"
+      ? Object.entries(product.specifications).filter(([key]) => !/upgrade|combined|package/i.test(key))
+      : [];
     target.innerHTML = `<div class="detail-layout">
       <div class="detail-gallery">
         <div class="detail-photo">${images.length ? `<img data-product-image data-gallery-main src="${escapeHtml(images[0].url)}" alt="${escapeHtml(images[0].alt)}">` : `<span class="product-placeholder">Product image not provided</span>`}</div>
@@ -584,17 +633,19 @@ async function initProductDetails() {
         <p class="product-meta">${[product.brand, product.model, product.sku ? `SKU ${product.sku}` : ""].filter(Boolean).map(escapeHtml).join(" · ")}</p>
         <p class="price">${product.price !== undefined && product.price !== null && product.price !== "" ? escapeHtml(formatPrice(product.price)) : '<span class="price-missing">Price on enquiry</span>'}</p>
         ${specifications.length ? `<h2>Specifications</h2><dl class="spec-list">${specifications.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join("")}</dl>` : ""}
+        ${productConfigurator(product)}
         <p class="product-description">${escapeHtml(product.description || "Contact us for product details.")}</p>
         <p><strong>Availability:</strong> ${escapeHtml(product.availability || "Please enquire")}</p>
         ${product.warranty ? `<p><strong>Warranty:</strong> ${escapeHtml(product.warranty)}</p>` : ""}
         <div class="product-actions product-detail-actions">
-          ${cartButton(product)}
+          ${productConfigurator(product) ? `<button class="button button-small" type="button" data-configured-add>Add to cart</button><button class="button button-small button-buy-now" type="button" data-configured-buy>Buy now</button>` : cartButton(product)}
           <a class="button button-secondary" href="contact.html?product=${encodeURIComponent(product.id)}">Enquire about this product</a>
           ${productWhatsAppUrl(product) ? `<a class="button button-whatsapp" href="${escapeHtml(productWhatsAppUrl(product))}" target="_blank" rel="noopener noreferrer"><svg class="whatsapp-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4.2A8 8 0 1 1 20 11.5Z"/><path d="M8.2 7.4c-.4.2-.7.6-.7 1.1 0 4.2 3.4 7.6 7.6 7.6.5 0 .9-.3 1.1-.7l.5-1.2-2.2-1-1 .9a8 8 0 0 1-3.2-3.2l.9-1-1-2.2z"/></svg> Buy on WhatsApp</a>` : ""}
         </div>
       </div>
     </div>`;
     const mainImage = target.querySelector("[data-gallery-main]");
+    setupProductConfigurator(target, product);
     setupCartActions(target);
     const thumbnails = [...target.querySelectorAll("[data-gallery-index]")];
     let currentImageIndex = 0;

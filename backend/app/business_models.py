@@ -106,6 +106,8 @@ class Product(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     image_url = Column(String(2048))
     catalog_stock_quantity = Column(Integer)
+    structured_specifications = Column(JSON, nullable=False, default=dict)
+    upgrade_options = Column(JSON, nullable=False, default=dict)
 
     inventory = relationship("Inventory", back_populates="product", uselist=False, cascade="all, delete-orphan")
     movements = relationship("InventoryMovement", back_populates="product")
@@ -203,6 +205,9 @@ class WebsiteOrderItem(Base):
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Numeric(12, 2), nullable=False)
     subtotal = Column(Numeric(12, 2), nullable=False)
+    base_unit_price = Column(Numeric(12, 2), nullable=True)
+    upgrade_amount = Column(Numeric(12, 2), nullable=False, default=0)
+    configuration = Column(JSON, nullable=False, default=dict)
 
     order = relationship("WebsiteOrder", back_populates="items")
 

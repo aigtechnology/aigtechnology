@@ -1,5 +1,5 @@
 import { backendRequest } from "./backend-api.js?v=20261116-live";
-import { clearCart, readCart, removeCartItem, updateCartItem } from "./cart-store.js";
+import { cartItemKey, clearCart, readCart, removeCartItem, updateCartItem } from "./cart-store.js";
 
 const byId = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -11,18 +11,18 @@ const money = value => new Intl.NumberFormat("en-IN", {
 const orderKey = orderId => `aigOrderAccess:${orderId}`;
 
 function cartLines(cart, pricedItems = []) {
-  const prices = new Map(pricedItems.map(item => [item.sku, item]));
+  const prices = new Map(pricedItems.map(item => [JSON.stringify({ sku: item.sku, configuration: item.configuration || {} }), item]));
   return cart.map(item => {
-    const price = prices.get(item.sku);
+    const price = prices.get(JSON.stringify({ sku: item.sku, configuration: item.configuration || {} })) || prices.get(JSON.stringify({ sku: item.sku, configuration: {} }));
     return `<article class="cart-line">
       ${item.image ? `<img src="${escapeHtml(item.image)}" alt="" loading="lazy">` : `<span class="product-placeholder" aria-hidden="true">Image unavailable</span>`}
-      <div class="cart-line__details"><h3>${escapeHtml(price?.name || item.name || item.sku)}</h3><p>SKU: ${escapeHtml(item.sku)}</p>
+      <div class="cart-line__details"><h3>${escapeHtml(price?.name || item.name || item.sku)}</h3><p>SKU: ${escapeHtml(item.sku)}</p>${price?.upgrade_breakdown?.length ? `<p class="cart-line__configuration">Upgrades: ${price.upgrade_breakdown.map(option => `${escapeHtml(option.label)} (+${money(option.amount)})`).join(", ")}</p>` : ""}
         ${price ? `<p>${money(price.unit_price)} each · Subtotal ${money(price.subtotal)}</p>` : `<p>Price and availability will be checked at checkout.</p>`}
       </div>
       <label class="cart-quantity">Quantity
-        <input type="number" min="1" max="10" value="${item.quantity}" data-cart-quantity="${escapeHtml(item.sku)}" aria-label="Quantity for ${escapeHtml(price?.name || item.name || item.sku)}">
+        <input type="number" min="1" max="10" value="${item.quantity}" data-cart-quantity="${escapeHtml(cartItemKey(item))}" aria-label="Quantity for ${escapeHtml(price?.name || item.name || item.sku)}">
       </label>
-      <button class="button button-secondary button-small" type="button" data-remove-cart="${escapeHtml(item.sku)}">Remove</button>
+      <button class="button button-secondary button-small" type="button" data-remove-cart="${escapeHtml(cartItemKey(item))}">Remove</button>
     </article>`;
   }).join("");
 }
@@ -40,7 +40,7 @@ async function validateCart(cart) {
   if (!cart.length) throw new Error("Your cart is empty.");
   return backendRequest("/checkout/validate", {
     method: "POST",
-    body: JSON.stringify({ items: cart.map(({ sku, quantity }) => ({ sku, quantity })) })
+    body: JSON.stringify({ items: cart.map(({ sku, quantity, configuration }) => ({ sku, quantity, configuration: configuration || {} })) })
   });
 }
 
@@ -297,7 +297,7 @@ async function initCheckoutPage() {
           customer,
           address: addressFrom(form),
           billing_address: billing,
-          items: cart.map(({ sku, quantity }) => ({ sku, quantity })),
+          items: cart.map(({ sku, quantity, configuration }) => ({ sku, quantity, configuration: configuration || {} })),
           terms_accepted: form.elements.terms_accepted.checked
         })
       });

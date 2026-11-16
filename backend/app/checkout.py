@@ -35,7 +35,7 @@ def _order_id_part(value: str, fallback: str, limit: int) -> str:
     return (cleaned[:limit] or fallback)
 
 
-def _new_order_id(database: Session, customer_name: str, items: list[tuple[Product, Inventory, int]]) -> str:
+def _new_order_id(database: Session, customer_name: str, items: list[tuple[Product, Inventory, CheckoutItem]]) -> str:
     name_part = _order_id_part(customer_name.split()[0] if customer_name.strip() else "", "CUS", 3)
     distinct_skus = {product.sku for product, _, _ in items}
     sku_part = _order_id_part(next(iter(distinct_skus)) if len(distinct_skus) == 1 else "", "ITEM", 40)
@@ -47,17 +47,51 @@ def _new_order_id(database: Session, customer_name: str, items: list[tuple[Produ
 
 
 def _normalized_items(items: list[CheckoutItem]) -> list[CheckoutItem]:
-    by_sku: dict[str, int] = {}
+    by_key: dict[tuple[str, str], CheckoutItem] = {}
     for item in items:
-        by_sku[item.sku] = by_sku.get(item.sku, 0) + item.quantity
-        if by_sku[item.sku] > 10:
+        configuration = item.configuration.model_dump(exclude_none=True) if item.configuration else {}
+        key = (item.sku, json.dumps(configuration, sort_keys=True, separators=(",", ":")))
+        current = by_key.get(key)
+        quantity = (current.quantity if current else 0) + item.quantity
+        if quantity > 10:
             raise HTTPException(status_code=422, detail=f"Maximum quantity for {item.sku} is 10")
-    return [CheckoutItem(sku=sku, quantity=quantity) for sku, quantity in sorted(by_sku.items())]
+        by_key[key] = CheckoutItem(sku=item.sku, quantity=quantity, configuration=item.configuration)
+    return [by_key[key] for key in sorted(by_key)]
 
 
-def _locked_products(database: Session, items: list[CheckoutItem]) -> list[tuple[Product, Inventory, int]]:
+def _upgrade_selection(product: Product, item: CheckoutItem) -> dict[str, object]:
+    selected = item.configuration.model_dump(exclude_none=True) if item.configuration else {}
+    available = product.upgrade_options if isinstance(product.upgrade_options, dict) else {}
+    if not selected:
+        return {"configuration": {}, "upgrade_amount": ZERO, "breakdown": []}
+    if selected.get("combined") and any(selected.get(key) for key in ("ram", "hdd", "ssd")):
+        raise HTTPException(status_code=422, detail=f"Choose either a combined package or individual upgrades for {product.sku}")
+    breakdown: list[dict[str, object]] = []
+    total = ZERO
+    for key in ("ram", "hdd", "ssd", "combined"):
+        option_id = selected.get(key)
+        if not option_id:
+            continue
+        options = available.get(key)
+        if not isinstance(options, list):
+            raise HTTPException(status_code=409, detail=f"{key.upper()} upgrades are not configured for {product.sku}")
+        option = next((entry for entry in options if isinstance(entry, dict) and str(entry.get("id")) == option_id), None)
+        if not option or option.get("available", True) is False:
+            raise HTTPException(status_code=409, detail=f"Selected {key.upper()} upgrade is unavailable")
+        try:
+            price = Decimal(str(option.get("price", "0"))).quantize(Decimal("0.01"))
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail="Product upgrade pricing is invalid") from exc
+        if price < ZERO:
+            raise HTTPException(status_code=500, detail="Product upgrade pricing is invalid")
+        total += price
+        breakdown.append({"type": key, "id": option_id, "label": str(option.get("label", option_id)), "amount": str(price)})
+    return {"configuration": selected, "upgrade_amount": total, "breakdown": breakdown}
+
+
+def _locked_products(database: Session, items: list[CheckoutItem]) -> list[tuple[Product, Inventory, CheckoutItem]]:
     normalized = _normalized_items(items)
-    products: list[tuple[Product, Inventory, int]] = []
+    products: list[tuple[Product, Inventory, CheckoutItem]] = []
     for item in normalized:
         product = database.scalar(
             select(Product).where(Product.sku == item.sku, Product.is_active.is_(True)).with_for_update()
@@ -73,7 +107,8 @@ def _locked_products(database: Session, items: list[CheckoutItem]) -> list[tuple
             raise HTTPException(status_code=409, detail=f"Insufficient stock for {item.sku}")
         if product.selling_price <= ZERO:
             raise HTTPException(status_code=409, detail=f"Product {item.sku} does not have a payable price")
-        products.append((product, inventory, item.quantity))
+        _upgrade_selection(product, item)
+        products.append((product, inventory, item))
     return products
 
 
@@ -106,15 +141,22 @@ def calculate_cart(database: Session, items: list[CheckoutItem]) -> dict[str, ob
     products = _locked_products(database, items)
     lines = []
     subtotal = ZERO
-    for product, inventory, quantity in products:
-        line_total = (Decimal(product.selling_price) * quantity).quantize(Decimal("0.01"))
+    for product, inventory, item in products:
+        selection = _upgrade_selection(product, item)
+        upgrade_amount = selection["upgrade_amount"]
+        line_unit_price = (Decimal(product.selling_price) + upgrade_amount).quantize(Decimal("0.01"))
+        line_total = (line_unit_price * item.quantity).quantize(Decimal("0.01"))
         subtotal += line_total
         lines.append({
             "sku": product.sku,
             "name": product.name,
             "image_url": product.image_url,
-            "quantity": quantity,
-            "unit_price": str(product.selling_price),
+            "quantity": item.quantity,
+            "base_unit_price": str(product.selling_price),
+            "upgrade_amount": str(upgrade_amount),
+            "configuration": selection["configuration"],
+            "upgrade_breakdown": selection["breakdown"],
+            "unit_price": str(line_unit_price),
             "subtotal": str(line_total),
             "available_quantity": inventory.available_quantity,
         })
@@ -159,7 +201,7 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
 
     locked = _locked_products(database, items)
     subtotal = sum(
-        (Decimal(product.selling_price) * quantity for product, _, quantity in locked),
+        ((Decimal(product.selling_price) + _upgrade_selection(product, item)["upgrade_amount"]) * item.quantity for product, _, item in locked),
         start=ZERO,
     ).quantize(Decimal("0.01"))
     customer = WebsiteCustomer(
@@ -194,13 +236,14 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
     )
     database.add(order)
     database.flush()
-    for product, inventory, quantity in locked:
-        inventory.available_quantity -= quantity
-        inventory.reserved_quantity += quantity
+    for product, inventory, item in locked:
+        selection = _upgrade_selection(product, item)
+        inventory.available_quantity -= item.quantity
+        inventory.reserved_quantity += item.quantity
         database.add(InventoryReservation(
             order_id=order.id,
             product_id=product.id,
-            quantity=quantity,
+            quantity=item.quantity,
             status="reserved",
             expires_at=datetime.now(UTC) + RESERVATION_LIFETIME,
         ))
@@ -209,9 +252,12 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
             product_id=product.id,
             name=product.name,
             sku=product.sku,
-            quantity=quantity,
-            unit_price=product.selling_price,
-            subtotal=(Decimal(product.selling_price) * quantity).quantize(Decimal("0.01")),
+            quantity=item.quantity,
+            base_unit_price=product.selling_price,
+            upgrade_amount=selection["upgrade_amount"],
+            configuration={**selection["configuration"], "breakdown": selection["breakdown"]},
+            unit_price=(Decimal(product.selling_price) + selection["upgrade_amount"]).quantize(Decimal("0.01")),
+            subtotal=((Decimal(product.selling_price) + selection["upgrade_amount"]) * item.quantity).quantize(Decimal("0.01")),
         ))
     payment = WebsitePayment(
         payment_id=str(uuid.uuid4()),

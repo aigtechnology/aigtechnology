@@ -128,17 +128,62 @@ function productFormData(form) {
     if (alt.length > 120 || publicId.length > 255) throw new Error("Image alt text or public ID is too long.");
     return { url: parsedUrl.href, alt: (alt || value("name")).slice(0, 120), ...(publicId ? { publicId } : {}) };
   });
+  const readUpgradeOptions = (type, combined = false) => [...form.querySelectorAll(`[data-upgrade-editor="${type}"] [data-upgrade-row]`)].map(row => {
+    const get = name => row.querySelector(`[data-upgrade-field="${name}"]`)?.value.trim() || "";
+    const amount = Number(get("price"));
+    const first = get(combined ? "ram" : "label");
+    const second = combined ? get("ssd") : "";
+    if (!first || (combined && !second) || !Number.isFinite(amount) || amount < 0) throw new Error(`Complete every ${combined ? "package" : type.toUpperCase()} upgrade row or remove it.`);
+    const id = get("id") || `${type}-${first}-${second}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return combined
+      ? { id, ram: first, ssd: second, label: `${first} + ${second}`, price: amount, included: row.querySelector('[data-upgrade-field="included"]')?.checked === true, available: row.querySelector('[data-upgrade-field="available"]')?.checked !== false }
+      : { id, label: first, price: amount, included: row.querySelector('[data-upgrade-field="included"]')?.checked === true, available: row.querySelector('[data-upgrade-field="available"]')?.checked !== false };
+  });
+  const specifications = parseSpecs(value("specifications"));
+  [["Processor", "processorSpec"], ["RAM", "ramSpec"], ["HDD", "hddSpec"], ["SSD", "ssdSpec"]].forEach(([label, field]) => { if (value(field)) specifications[label] = value(field); });
   const price = value("price");
   return {
     name: value("name"), slug: value("slug"), brand: value("brand"), model: value("model"),
     category: value("category"), sku: value("sku"), description: value("description"),
-    specifications: parseSpecs(value("specifications")), condition: value("condition"),
+    specifications, upgradeOptions: { ram: readUpgradeOptions("ram"), hdd: readUpgradeOptions("hdd"), ssd: readUpgradeOptions("ssd"), combined: readUpgradeOptions("combined", true) }, condition: value("condition"),
     price: price ? Number(price) : null, availability: value("availability"),
     stockQuantity: value("stockQuantity") ? Number(value("stockQuantity")) : null,
     warranty: value("warranty"), images, featured: form.elements.featured.checked,
     published: form.elements.published.checked,
     searchKeywords: [value("name"), value("brand"), value("model"), value("category"), value("sku")].join(" ").toLowerCase()
   };
+}
+
+function ensureUpgradeFields(form) {
+  if (form.querySelector("[data-upgrade-fields]")) return;
+  const panel = document.createElement("div");
+  panel.dataset.upgradeFields = "true";
+  panel.className = "field full";
+  panel.innerHTML = `<h3>Specifications and hardware upgrades</h3><p><small>Choose the product specifications, then use Add option to create customer-facing upgrade dropdowns. Prices are additional to the base product price.</small></p><div class="form-grid"><div class="field"><label>Processor</label><input name="processorSpec" list="processor-values"><datalist id="processor-values"><option>Intel Core i5 6th Gen</option><option>Intel Core i7 8th Gen</option><option>AMD Ryzen 5</option></datalist></div><div class="field"><label>RAM</label><select name="ramSpec"><option value="">Not specified</option><option>4GB DDR3</option><option>8GB DDR3</option><option>8GB DDR4</option><option>16GB DDR4</option><option>32GB DDR4</option></select></div><div class="field"><label>HDD</label><select name="hddSpec"><option value="">Not specified</option><option>250GB HDD</option><option>500GB HDD</option><option>1TB HDD</option></select></div><div class="field"><label>SSD</label><select name="ssdSpec"><option value="">Not specified</option><option>128GB SSD</option><option>256GB SSD</option><option>512GB SSD</option><option>1TB SSD</option></select></div></div><div class="upgrade-editor-grid"><div data-upgrade-editor="ram"><h4>RAM upgrade options</h4><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="ram">+ Add RAM option</button></div><div data-upgrade-editor="hdd"><h4>HDD upgrade options</h4><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="hdd">+ Add HDD option</button></div><div data-upgrade-editor="ssd"><h4>SSD upgrade options</h4><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="ssd">+ Add SSD option</button></div><div data-upgrade-editor="combined"><h4>RAM + SSD packages</h4><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="combined">+ Add package</button></div></div>`;
+  form.querySelector("[name=specifications]")?.closest(".field")?.insertAdjacentElement("beforebegin", panel);
+  const choices = { ram: ["4GB DDR3", "8GB DDR3", "8GB DDR4", "16GB DDR4", "32GB DDR4"], hdd: ["250GB HDD", "500GB HDD", "1TB HDD"], ssd: ["128GB SSD", "256GB SSD", "512GB SSD", "1TB SSD"] };
+  const addRow = (type, data = {}) => {
+    const combined = type === "combined";
+    const row = document.createElement("div");
+    row.dataset.upgradeRow = "true";
+    const options = list => list.map(item => `<option value="${escapeHtml(item)}"${item === data.label ? " selected" : ""}>${escapeHtml(item)}</option>`).join("");
+    row.innerHTML = combined
+      ? `<select data-upgrade-field="ram" aria-label="Package RAM"><option value="">RAM</option>${options(choices.ram)}</select><select data-upgrade-field="ssd" aria-label="Package SSD"><option value="">SSD</option>${options(choices.ssd)}</select>`
+      : `<select data-upgrade-field="label" aria-label="${type.toUpperCase()} configuration"><option value="">Choose ${type.toUpperCase()}</option>${options(choices[type])}<option value="${escapeHtml(data.label || "")}"${data.label && !choices[type].includes(data.label) ? " selected" : ""}>Custom: ${escapeHtml(data.label || "")}</option></select>`;
+    if (combined) { row.querySelector('[data-upgrade-field="ram"]').value = data.ram || ""; row.querySelector('[data-upgrade-field="ssd"]').value = data.ssd || ""; }
+    row.insertAdjacentHTML("beforeend", `<input type="hidden" data-upgrade-field="id" value="${escapeHtml(data.id || "")}"><input type="number" min="0" step="0.01" data-upgrade-field="price" value="${escapeHtml(data.price ?? 0)}" placeholder="Extra price (₹)"><label class="upgrade-check"><input type="checkbox" data-upgrade-field="included"${data.included ? " checked" : ""}> Included</label><label class="upgrade-check"><input type="checkbox" data-upgrade-field="available"${data.available !== false ? " checked" : ""}> Available</label><button class="button button-small button-danger" type="button" data-remove-upgrade>Remove</button>`);
+    row.querySelector("[data-remove-upgrade]").addEventListener("click", () => row.remove());
+    panel.querySelector(`[data-upgrade-editor="${type}"] [data-upgrade-rows]`).append(row);
+  };
+  panel.querySelectorAll("[data-add-upgrade]").forEach(button => button.addEventListener("click", () => addRow(button.dataset.addUpgrade)));
+  panel._addUpgradeRow = addRow;
+}
+
+function fillUpgradeFields(form, product) {
+  const specs = product.specifications || {};
+  for (const [label, field] of [["Processor", "processorSpec"], ["RAM", "ramSpec"], ["HDD", "hddSpec"], ["SSD", "ssdSpec"]]) if (form.elements[field]) form.elements[field].value = specs[label] || "";
+  form.querySelectorAll("[data-upgrade-rows]").forEach(rows => { rows.innerHTML = ""; });
+  for (const type of ["ram", "hdd", "ssd", "combined"]) for (const option of (product.upgradeOptions?.[type] || [])) form.querySelector("[data-upgrade-fields]")._addUpgradeRow(type, option);
 }
 
 function attachCatalogImport() {
@@ -251,6 +296,7 @@ function attachCatalogImport() {
 
 async function loadProducts() {
   const form = $("#product-form");
+  ensureUpgradeFields(form);
   const status = $("#admin-message");
   const list = $("#product-list");
   const [products, settings] = await Promise.all([adminListProducts(), readAdminSettings()]);
@@ -303,6 +349,7 @@ async function loadProducts() {
     for (const key of ["name", "slug", "brand", "model", "sku", "description", "condition", "price", "availability", "stockQuantity", "warranty"]) form.elements[key].value = product[key] ?? "";
     categorySelect.value = categories.find(category => category.toLowerCase() === String(product.category || "").trim().toLowerCase()) || "";
     form.elements.specifications.value = Object.entries(product.specifications || {}).map(([key, value]) => `${key}: ${value}`).join("\n");
+    fillUpgradeFields(form, product);
     form.elements.images.value = (product.images || []).map(image => `${image.url || image}${image.alt ? ` | ${image.alt}` : ""}${image.publicId ? ` | ${image.publicId}` : ""}`).join("\n");
     form.elements.featured.checked = Boolean(product.featured);
     form.elements.published.checked = Boolean(product.published);

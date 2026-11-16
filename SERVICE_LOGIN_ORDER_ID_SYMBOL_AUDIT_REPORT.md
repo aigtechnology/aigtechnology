@@ -24,7 +24,7 @@ Date: 16 November 2026
 - Updated payment request schemas to accept the new order-ID length without changing payment verification logic.
 - Updated customer purchase verification UI to auto-detect invoice type and display multiple matching purchases.
 - Updated the service form to use the verified purchase record automatically when available.
-- Corrected confirmed customer-facing mojibake such as `Â©`, `â€™`, `â€¦`, and `â€“` in the audited pages.
+- Corrected confirmed customer-facing mojibake such as `©`, `â€™`, `…`, and `â€“` in the audited pages.
 - Preserved INR formatting and existing payment/authentication integrations.
 
 ## Database migration

@@ -28,7 +28,8 @@ function renderMobileCategoryRail() {
     const isActive = selectedCategory ? category.toLowerCase() === selectedCategory : index === 0;
     link.className = `mobile-category${isActive ? " is-active" : ""}`;
     link.href = index === 0 ? "products.html" : `products.html?category=${encodeURIComponent(category)}`;
-    link.innerHTML = `<span class="mobile-category__icon" aria-hidden="true">${escapeHtml(category.split(/\s+/).map(word => word[0]).join("").slice(0, 2).toUpperCase())}</span><span>${escapeHtml(index === 0 ? "For you" : category)}</span>`;
+    const categoryLabel = index === 0 ? "FOR YOU" : category.toUpperCase();
+    link.innerHTML = `<span class="mobile-category__icon" aria-hidden="true">${escapeHtml(category.split(/\s+/).map(word => word[0]).join("").slice(0, 2).toUpperCase())}</span><span>${escapeHtml(categoryLabel)}</span>`;
     return link;
   }));
 }

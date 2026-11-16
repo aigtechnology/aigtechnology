@@ -24,6 +24,7 @@ from .business_models import (
     WebsitePayment,
 )
 from .config import settings
+from .delivery import lookup_pincode
 from .schemas import CheckoutItem, CreateOrderRequest
 
 ZERO = Decimal("0.00")
@@ -136,7 +137,7 @@ def release_expired_reservations(database: Session) -> None:
         database.commit()
 
 
-def calculate_cart(database: Session, items: list[CheckoutItem]) -> dict[str, object]:
+def calculate_cart(database: Session, items: list[CheckoutItem], postal_code: str | None = None) -> dict[str, object]:
     release_expired_reservations(database)
     products = _locked_products(database, items)
     lines = []
@@ -160,12 +161,18 @@ def calculate_cart(database: Session, items: list[CheckoutItem]) -> dict[str, ob
             "subtotal": str(line_total),
             "available_quantity": inventory.available_quantity,
         })
+    delivery = lookup_pincode(postal_code) if postal_code else None
+    delivery_charge = Decimal(str(delivery["delivery_charge"])) if delivery else ZERO
     return {
         "items": lines,
         "subtotal": str(subtotal),
-        "delivery_charge": str(ZERO),
+        "delivery_charge": str(delivery_charge),
         "discount": str(ZERO),
-        "total": str(subtotal),
+        "total": str((subtotal + delivery_charge).quantize(Decimal("0.01"))),
+        "delivery_state": delivery["state"] if delivery else None,
+        "delivery_city": delivery["city"] if delivery else None,
+        "delivery_verified": bool(delivery),
+        "delivery_message": delivery["message"] if delivery else "Enter your PIN code to calculate packaging and delivery.",
         "currency": "INR",
     }
 
@@ -200,6 +207,8 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
         return _order_created_response(existing, payment)
 
     locked = _locked_products(database, items)
+    delivery = lookup_pincode(payload.address.postal_code)
+    delivery_charge = Decimal(str(delivery["delivery_charge"])).quantize(Decimal("0.01"))
     subtotal = sum(
         ((Decimal(product.selling_price) + _upgrade_selection(product, item)["upgrade_amount"]) * item.quantity for product, _, item in locked),
         start=ZERO,
@@ -213,8 +222,14 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
     database.flush()
 
     shipping = payload.address.model_dump()
+    shipping["state"] = str(delivery["state"])
+    if delivery.get("city"):
+        shipping["city"] = str(delivery["city"])
+    shipping["delivery_state"] = str(delivery["state"])
+    shipping["delivery_verified"] = True
     billing = (payload.billing_address or payload.address).model_dump()
-    database.add(WebsiteAddress(customer_id=customer.id, **shipping))
+    address_columns = {key: shipping[key] for key in ("line1", "line2", "city", "state", "postal_code", "country") if key in shipping}
+    database.add(WebsiteAddress(customer_id=customer.id, **address_columns))
     if payload.billing_address:
         database.add(WebsiteAddress(customer_id=customer.id, is_billing=True, **billing))
     order_id = _new_order_id(database, payload.customer.full_name, locked)
@@ -228,9 +243,9 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
         status="Pending Payment",
         payment_status="Created",
         subtotal=subtotal,
-        delivery_charge=ZERO,
+        delivery_charge=delivery_charge,
         discount=ZERO,
-        total_amount=subtotal,
+        total_amount=(subtotal + delivery_charge).quantize(Decimal("0.01")),
         shipping_address=shipping,
         billing_address=billing,
     )
@@ -264,7 +279,7 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
         order_id=order.id,
         provider=settings.payment_provider,
         status="Created",
-        amount=subtotal,
+        amount=order.total_amount,
     )
     database.add(payment)
     database.flush()

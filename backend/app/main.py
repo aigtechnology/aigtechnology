@@ -27,6 +27,7 @@ from .checkout import (
     get_order_for_customer,
     release_reservations,
 )
+from .delivery import lookup_pincode
 from .database import Base, engine, get_db
 from .firebase_auth import require_firebase_admin
 from .models import AdminSession, AdminUser
@@ -211,6 +212,8 @@ def _serialize_website_order(order: WebsiteOrder) -> dict[str, object]:
             for refund in payment.refunds
         ] if payment else [],
         "total_amount": str(order.total_amount),
+        "subtotal": str(order.subtotal),
+        "delivery_charge": str(order.delivery_charge),
         "items": [
             {"name": item.name, "sku": item.sku, "quantity": item.quantity,
              "base_unit_price": str(item.base_unit_price or item.unit_price),
@@ -238,6 +241,8 @@ def _serialize_website_order_admin_detail(order: WebsiteOrder) -> dict[str, obje
         "payment_id": payment.payment_id if payment else None,
         "payment_reference": payment.provider_payment_id if payment else None,
         "total_amount": str(order.total_amount),
+        "subtotal": str(order.subtotal),
+        "delivery_charge": str(order.delivery_charge),
         "shipping_address": order.shipping_address,
         "billing_address": order.billing_address,
         "items": [
@@ -345,7 +350,13 @@ def validate_checkout(
     payload: CheckoutValidateRequest,
     database: Session = Depends(get_db),
 ) -> dict[str, object]:
-    return calculate_cart(database, payload.items)
+    return calculate_cart(database, payload.items, payload.postal_code)
+
+
+@app.get("/api/delivery/lookup", tags=["checkout"])
+@limiter.limit("30/minute")
+def lookup_delivery(request: Request, postal_code: str = Query(..., min_length=6, max_length=6)) -> dict[str, object]:
+    return lookup_pincode(postal_code)
 
 
 @app.post("/api/orders/create", tags=["orders"])
@@ -488,8 +499,8 @@ def create_service_request(
         device_type=payload.device_type,
         brand_model=payload.brand_model or "",
         problem_description=payload.problem_description,
-        address=payload.address,
-        preferred_contact_time=payload.preferred_contact_time or "",
+        address="",
+        preferred_contact_time="",
         image_urls=payload.image_urls,
         purchase_type=payload.purchase_type,
         purchase_reference=payload.purchase_reference,

@@ -69,7 +69,9 @@ def _order_text(order: WebsiteOrder, payment: WebsitePayment) -> tuple[str, str]
         f"Mobile: {customer.phone}\n"
         f"Email: {customer.email}\n"
         f"Products:\n{items}\n"
-        f"Total: INR {order.total_amount}\n"
+        f"Product subtotal: INR {order.subtotal}\n"
+        f"Packaging and delivery: INR {order.delivery_charge}\n"
+        f"Total payable: INR {order.total_amount}\n"
         f"Delivery address: {address_text}\n"
         f"Expected dispatch date: {dispatch_date} ({dispatch_days} working days after order date)\n"
         f"Payment status: {payment.status}\n"
@@ -91,7 +93,7 @@ def _order_text(order: WebsiteOrder, payment: WebsitePayment) -> tuple[str, str]
 <h3>Order confirmation: {safe_order_id}</h3>
 <p><strong>Customer:</strong> {safe_name}<br><strong>Mobile:</strong> {safe_phone}<br><strong>Email:</strong> {safe_email}</p>
 <h4>Products</h4><ul>{safe_items}</ul>
-<p><strong>Total:</strong> INR {html.escape(str(order.total_amount))}<br><strong>Payment status:</strong> {safe_status}</p>
+<p><strong>Product subtotal:</strong> INR {html.escape(str(order.subtotal))}<br><strong>Packaging and delivery:</strong> INR {html.escape(str(order.delivery_charge))}<br><strong>Total payable:</strong> INR {html.escape(str(order.total_amount))}<br><strong>Payment status:</strong> {safe_status}</p>
 <p><strong>Expected dispatch date:</strong> {safe_dispatch_date} ({dispatch_days} working days after the order date)</p>
 <p><strong>Delivery address:</strong><br>{safe_address}</p>
 <p>Thank you for choosing AIG TECHNOLOGY.</p>

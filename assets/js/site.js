@@ -777,6 +777,10 @@ async function initServiceEnquiry() {
     if (referenceField) referenceField.value = selectedPurchase.reference || "";
     if (mobileField) mobileField.value = selectedPurchase.mobile || "";
   };
+  ["address", "preferredContactTime"].forEach(name => {
+    const field = form.elements[name];
+    field?.closest(".field")?.remove();
+  });
   syncVerifiedFields();
   form.addEventListener("submit", async event => {
     event.preventDefault();
@@ -792,8 +796,6 @@ async function initServiceEnquiry() {
       deviceType: String(fields.get("deviceType") || "").trim(),
       brandModel: String(fields.get("brandModel") || "").trim(),
       description: String(fields.get("description") || "").trim(),
-      address: String(fields.get("address") || "").trim(),
-      preferredContactTime: String(fields.get("preferredContactTime") || "").trim(),
       purchaseType: selectedPurchase.invoice_type || selectedPurchase.source || "ONLINE",
       purchaseReference: selectedPurchase.reference || String(fields.get("purchaseReference") || "").trim(),
       purchaseMobile: String(selectedPurchase.mobile || fields.get("purchaseMobile") || "").replace(/\D/g, "")
@@ -829,8 +831,8 @@ async function initServiceEnquiry() {
       form.elements.email.focus();
       return;
     }
-    if (!data.serviceCategory || !data.deviceType || !data.address || !data.purchaseType || data.description.length < 10 || data.description.length > 1800 || !fields.has("consent")) {
-      status.textContent = "Choose a service type and device, provide your address and describe the issue in at least 10 characters, then provide consent.";
+    if (!data.serviceCategory || !data.deviceType || !data.purchaseType || data.description.length < 10 || data.description.length > 1800 || !fields.has("consent")) {
+      status.textContent = "Choose a service type and device, describe the issue in at least 10 characters, then provide consent.";
       status.dataset.state = "error";
       return;
     }
@@ -850,8 +852,6 @@ async function initServiceEnquiry() {
           device_type: data.deviceType,
           brand_model: data.brandModel,
           problem_description: data.description,
-          address: data.address,
-          preferred_contact_time: data.preferredContactTime,
           image_urls: imageUrls,
           purchase_type: data.purchaseType,
           purchase_reference: data.purchaseReference,

@@ -30,17 +30,17 @@ function cartLines(cart, pricedItems = []) {
 function renderSummary(target, result) {
   target.innerHTML = `<div class="price-breakdown">
     <div><span>Subtotal</span><strong>${money(result.subtotal)}</strong></div>
-    <div><span>Delivery</span><strong>${money(result.delivery_charge)}</strong></div>
+    <div><span>Packaging &amp; delivery</span><strong>${money(result.delivery_charge)}</strong></div>
     <div><span>Discount</span><strong>−${money(result.discount)}</strong></div>
     <div class="price-breakdown__total"><span>Total payable</span><strong>${money(result.total)}</strong></div>
-  </div>`;
+  </div>${result.delivery_message ? `<p class="form-status" role="status">${escapeHtml(result.delivery_message)}</p>` : ""}`;
 }
 
-async function validateCart(cart) {
+async function validateCart(cart, postalCode = "") {
   if (!cart.length) throw new Error("Your cart is empty.");
   return backendRequest("/checkout/validate", {
     method: "POST",
-    body: JSON.stringify({ items: cart.map(({ sku, quantity, configuration }) => ({ sku, quantity, configuration: configuration || {} })) })
+    body: JSON.stringify({ items: cart.map(({ sku, quantity, configuration }) => ({ sku, quantity, configuration: configuration || {} })), ...(postalCode ? { postal_code: postalCode } : {}) })
   });
 }
 
@@ -248,12 +248,64 @@ async function initCheckoutPage() {
   const status = byId("checkout-status");
   const summary = byId("checkout-summary");
   const paymentPanel = byId("payment-panel");
+  const postalField = form.elements.postal_code;
+  const cityField = form.elements.city;
+  const stateField = form.elements.state;
+  const deliveryStatus = document.createElement("p");
+  deliveryStatus.className = "form-status";
+  deliveryStatus.id = "delivery-location-status";
+  deliveryStatus.setAttribute("role", "status");
+  deliveryStatus.setAttribute("aria-live", "polite");
+  deliveryStatus.textContent = "Enter your PIN code to verify delivery charges.";
+  postalField.closest(".field")?.append(deliveryStatus);
+  cityField.readOnly = true;
+  stateField.readOnly = true;
   const billingDetails = document.querySelector(".billing-details");
   const billingFields = [...form.querySelectorAll("[name^='billing_']")];
   billingDetails.addEventListener("toggle", () => {
     billingFields.forEach(field => { field.required = billingDetails.open && field.name !== "billing_line2"; });
   });
   let cart;
+  let deliveryVerification = null;
+  let lookupTimer = null;
+  const setDeliveryError = message => {
+    deliveryVerification = null;
+    cityField.value = "";
+    stateField.value = "";
+    deliveryStatus.textContent = message;
+    deliveryStatus.dataset.state = "error";
+  };
+  const verifyDelivery = async () => {
+    const postalCode = postalField.value.trim();
+    if (!/^[1-9][0-9]{5}$/.test(postalCode)) {
+      setDeliveryError("Enter a valid 6-digit Indian PIN code.");
+      return;
+    }
+    deliveryStatus.textContent = "Verifying delivery location…";
+    deliveryStatus.dataset.state = "";
+    try {
+      const result = await backendRequest(`/delivery/lookup?postal_code=${encodeURIComponent(postalCode)}`);
+      deliveryVerification = result;
+      cityField.value = result.city || "";
+      stateField.value = result.state || "";
+      deliveryStatus.textContent = result.message || `Delivery charge: ${money(result.delivery_charge)}`;
+      deliveryStatus.dataset.state = "success";
+      const validated = await validateCart(cart, postalCode);
+      renderSummary(summary, validated);
+    } catch (error) {
+      setDeliveryError(error.message || "We could not verify this PIN code.");
+    }
+  };
+  postalField.addEventListener("input", () => {
+    deliveryVerification = null;
+    cityField.value = "";
+    stateField.value = "";
+    deliveryStatus.textContent = "Enter your PIN code to verify delivery charges.";
+    deliveryStatus.dataset.state = "";
+    clearTimeout(lookupTimer);
+    if (/^[1-9][0-9]{5}$/.test(postalField.value.trim())) lookupTimer = setTimeout(verifyDelivery, 300);
+  });
+  postalField.addEventListener("blur", verifyDelivery);
   try {
     cart = readCart();
     const result = await validateCart(cart);
@@ -267,11 +319,17 @@ async function initCheckoutPage() {
   form.addEventListener("submit", async event => {
     event.preventDefault();
     if (!form.reportValidity()) return;
+    const postalCode = postalField.value.trim();
+    if (!deliveryVerification || deliveryVerification.postal_code !== postalCode) {
+      setDeliveryError("Verify the delivery PIN code before placing your order.");
+      postalField.focus();
+      return;
+    }
     const button = byId("place-order");
     button.disabled = true;
     status.textContent = "Rechecking price and stock before creating your order…";
     try {
-      const validated = await validateCart(cart);
+      const validated = await validateCart(cart, postalCode);
       renderSummary(summary, validated);
       const billing = billingDetails.open ? {
         line1: form.elements.billing_line1.value.trim(),

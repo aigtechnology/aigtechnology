@@ -40,6 +40,7 @@ class CheckoutValidateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[CheckoutItem] = Field(min_length=1, max_length=20)
+    postal_code: str | None = Field(default=None, pattern=r"^[1-9][0-9]{5}$")
 
 
 class AddressInput(BaseModel):
@@ -137,7 +138,7 @@ class ServiceRequestCreate(BaseModel):
     device_type: str = Field(min_length=2, max_length=40)
     brand_model: str | None = Field(default=None, max_length=160)
     problem_description: str = Field(min_length=10, max_length=1800)
-    address: str = Field(min_length=3, max_length=500)
+    address: str = Field(default="", max_length=500)
     preferred_contact_time: str | None = Field(default=None, max_length=80)
     image_urls: list[str] = Field(default_factory=list, max_length=6)
     purchase_type: Literal["GST", "NON_GST", "ONLINE"]

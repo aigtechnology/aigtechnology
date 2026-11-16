@@ -98,7 +98,7 @@ class RefundRequest(BaseModel):
 class FulfillmentUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: Literal["Processing", "Shipped", "Delivered"]
+    status: Literal["Processing", "Packed", "Shipped", "Out for Delivery", "Delivered"]
 
 
 class DispatchSettingsUpdate(BaseModel):

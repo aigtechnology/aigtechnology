@@ -843,8 +843,10 @@ def update_website_order_status(
         raise HTTPException(status_code=404, detail="Website order not found")
     allowed = {
         "Confirmed": {"Processing"},
-        "Processing": {"Shipped"},
-        "Shipped": {"Delivered"},
+        "Processing": {"Packed"},
+        "Packed": {"Shipped"},
+        "Shipped": {"Out for Delivery"},
+        "Out for Delivery": {"Delivered"},
     }
     if payload.status != order.status and payload.status not in allowed.get(order.status, set()):
         raise HTTPException(status_code=409, detail=f"Cannot move order from {order.status} to {payload.status}")

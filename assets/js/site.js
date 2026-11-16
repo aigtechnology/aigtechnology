@@ -19,6 +19,18 @@ const defaultProductCategories = [
 ];
 let productCategories = defaultProductCategories;
 
+function renderMobileCategoryRail() {
+  const rail = byId("mobile-category-nav");
+  if (!rail) return;
+  rail.replaceChildren(...productCategories.map((category, index) => {
+    const link = document.createElement("a");
+    link.className = `mobile-category${index === 0 ? " is-active" : ""}`;
+    link.href = index === 0 ? "products.html" : `products.html?category=${encodeURIComponent(category)}`;
+    link.innerHTML = `<span class="mobile-category__icon" aria-hidden="true">${escapeHtml(category.split(/\s+/).map(word => word[0]).join("").slice(0, 2).toUpperCase())}</span><span>${escapeHtml(index === 0 ? "For you" : category)}</span>`;
+    return link;
+  }));
+}
+
 function renderProductCategories(categories) {
   productCategories = [...new Set(categories
     .map(category => typeof category === "string" ? category.trim() : "")
@@ -53,6 +65,7 @@ function renderProductCategories(categories) {
       return link;
     }));
   }
+  renderMobileCategoryRail();
 }
 
 function setupAnnouncement() {
@@ -175,6 +188,60 @@ function setupNavigation() {
   });
 }
 
+function setupMobileSearch() {
+  let form = byId("mobile-search-form");
+  if (!form && document.querySelector(".site-header") && document.querySelector("main")) {
+    const tools = document.createElement("section");
+    tools.className = "mobile-shopping-tools";
+    tools.setAttribute("aria-label", "Shop AIG TECHNOLOGY");
+    tools.innerHTML = '<div class="container"><form class="mobile-search" id="mobile-search-form" action="products.html" role="search"><label class="sr-only" for="mobile-search-input">Search for products, brands</label><span class="mobile-search__icon" aria-hidden="true">⌕</span><input id="mobile-search-input" name="q" type="search" placeholder="Search for products, brands..." autocomplete="off"><button class="mobile-search__clear" id="mobile-search-clear" type="button" aria-label="Clear search" hidden>×</button><button class="mobile-search__submit" type="submit" aria-label="Search">Search</button></form><nav class="mobile-category-rail" id="mobile-category-nav" aria-label="Shop by category"></nav></div>';
+    document.querySelector(".site-header").after(tools);
+    form = tools.querySelector("#mobile-search-form");
+  }
+  const input = byId("mobile-search-input");
+  const clear = byId("mobile-search-clear");
+  if (!form || !input) return;
+  const updateClear = () => { if (clear) clear.hidden = !input.value; };
+  input.addEventListener("input", updateClear);
+  clear?.addEventListener("click", () => { input.value = ""; updateClear(); input.focus(); });
+  form.addEventListener("submit", () => {
+    input.value = input.value.trim();
+    if (!input.value) return;
+    form.action = "products.html";
+  });
+  updateClear();
+}
+
+function setupMobileBottomNav() {
+  if (document.querySelector(".mobile-bottom-nav") || !document.querySelector(".site-footer")) return;
+  const nav = document.createElement("nav");
+  nav.className = "mobile-bottom-nav";
+  nav.setAttribute("aria-label", "Mobile shopping navigation");
+  nav.innerHTML = `<a href="index.html" data-mobile-tab="home"><span aria-hidden="true">⌂</span><small>Home</small></a><a href="index.html#mobile-categories" data-mobile-tab="categories"><span aria-hidden="true">▦</span><small>Categories</small></a><a href="products.html#filter-search" data-mobile-tab="search"><span aria-hidden="true">⌕</span><small>Search</small></a><a href="cart.html" data-mobile-tab="cart"><span aria-hidden="true">🛒<b class="mobile-bottom-nav__badge" id="mobile-cart-count">0</b></span><small>Cart</small></a><a href="customer-account.html" data-mobile-tab="account"><span aria-hidden="true">♙</span><small>Account</small></a>`;
+  document.body.append(nav);
+  const current = location.pathname.split("/").pop() || "index.html";
+  const active = current === "index.html" ? "home" : current === "products.html" || current === "product.html" ? "categories" : current === "cart.html" || current === "checkout.html" ? "cart" : current.includes("customer") ? "account" : "";
+  nav.querySelector(`[data-mobile-tab="${active}"]`)?.classList.add("is-active");
+  const refresh = () => {
+    const badge = byId("mobile-cart-count");
+    if (badge) badge.textContent = String(cartItemCount());
+  };
+  try { refresh(); } catch { /* cart store may not be initialized on a non-shopping page */ }
+  window.addEventListener("aig-cart-updated", refresh);
+  nav.querySelector('[data-mobile-tab="search"]')?.addEventListener("click", event => {
+    const search = byId("mobile-search-input") || byId("filter-search");
+    if (search && current === "products.html") {
+      event.preventDefault();
+      search.focus();
+      search.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
+      return;
+    }
+    if (!search) return;
+    event.preventDefault();
+    window.location.href = "products.html#filter-search";
+  });
+}
+
 function setupHomeHero() {
   const header = document.querySelector(".home-header");
   const video = document.querySelector(".home-hero__video");
@@ -183,7 +250,40 @@ function setupHomeHero() {
     updateHeader();
     window.addEventListener("scroll", updateHeader, { passive: true });
   }
+  let toggle = document.querySelector("[data-media-toggle]");
+  let status = document.querySelector("[data-media-status]");
+  if (video && !toggle) {
+    const controls = document.createElement("div");
+    controls.className = "home-hero__media-controls";
+    controls.setAttribute("aria-label", "Video controls");
+    controls.innerHTML = '<button class="home-hero__media-button" type="button" data-media-toggle aria-label="Pause introduction video">Pause</button><span class="home-hero__media-status" data-media-status>Introduction</span>';
+    video.parentElement.append(controls);
+    toggle = controls.querySelector("[data-media-toggle]");
+    status = controls.querySelector("[data-media-status]");
+  }
+  if (toggle && video) {
+    toggle.addEventListener("click", () => {
+      if (video.paused) {
+        video.play().catch(() => {});
+        toggle.textContent = "Pause";
+        toggle.setAttribute("aria-label", "Pause introduction video");
+        if (status) status.textContent = "Playing";
+      } else {
+        video.pause();
+        toggle.textContent = "Play";
+        toggle.setAttribute("aria-label", "Play introduction video");
+        if (status) status.textContent = "Paused";
+      }
+    });
+  }
   if (!video || reducedMotion) return;
+  if ("IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(entries => entries.forEach(entry => {
+      if (entry.isIntersecting) video.play().catch(() => {});
+      else video.pause();
+    }), { threshold: 0.2 });
+    observer.observe(video);
+  }
   fetch(video.dataset.videoSrc, { method: "HEAD" }).then(response => {
     if (!response.ok) {
       video.classList.add("is-unavailable");
@@ -342,6 +442,48 @@ async function loadProductGrid(container, options = {}) {
   }
 }
 
+function renderProductList(container, products, emptyMessage) {
+  container.innerHTML = products.length ? products.map(productCard).join("") : `<div class="empty-state">${escapeHtml(emptyMessage)}</div>`;
+  setupImageFallbacks(container);
+  setupCartActions(container);
+  setupReveals(container);
+}
+
+async function initMobileCollections(products = null) {
+  const collections = document.querySelector(".mobile-collections");
+  if (!collections || !isFirebaseConfigured) return;
+  try {
+    const catalogue = products || await getProducts({ max: 200 });
+    const available = catalogue.filter(product => product.sku && Number(product.price) > 0 && Number(product.stockQuantity) > 0);
+    const best = [...available].sort((left, right) => Number(right.featured) - Number(left.featured) || String(left.name).localeCompare(String(right.name))).slice(0, 8);
+    const accessories = available.filter(product => /accessor|component|keyboard|mouse|storage|ram|ssd|network/i.test(`${product.category || ""} ${product.name || ""}`)).slice(0, 8);
+    renderProductList(collections.querySelector('[data-collection-rail="best"]'), best, "No available products are listed yet.");
+    renderProductList(collections.querySelector('[data-collection-rail="accessories"]'), accessories, "No accessories are available right now.");
+    if (!best.length && !accessories.length) collections.hidden = true;
+  } catch (error) {
+    collections.hidden = true;
+    console.warn("Mobile product collections could not be loaded:", error);
+  }
+}
+
+function renderPromotions(settings) {
+  const banners = Array.isArray(settings.homepageBanners) ? settings.homepageBanners.filter(item => item && item.active !== false && (item.title || item.image)) : [];
+  if (!banners.length) return;
+  let section = byId("promo-banners");
+  if (!section) {
+    section = document.createElement("section");
+    section.className = "section promo-section";
+    section.id = "promo-banners";
+    section.setAttribute("aria-labelledby", "promo-title");
+    section.innerHTML = '<div class="container"><div class="section-heading"><p class="eyebrow">Offers</p><h2 id="promo-title">Latest from AIG Technology</h2></div><div class="promo-rail" data-promo-rail></div></div>';
+    document.querySelector("#featured-products")?.closest("section")?.before(section);
+  }
+  const rail = section.querySelector("[data-promo-rail]");
+  if (!rail) return;
+  rail.innerHTML = banners.map(banner => `<article class="promo-card">${banner.image ? `<img src="${escapeHtml(banner.image)}" alt="${escapeHtml(banner.title || "AIG Technology promotion")}" loading="lazy">` : ""}<div><p class="eyebrow">AIG TECHNOLOGY</p><h3>${escapeHtml(banner.title || "Explore our catalogue")}</h3>${banner.text ? `<p>${escapeHtml(banner.text)}</p>` : ""}${banner.href ? `<a class="button button-small" href="${escapeHtml(banner.href)}">Explore</a>` : ""}</div></article>`).join("");
+  section.hidden = false;
+}
+
 async function initProducts() {
   await settingsInitialization;
   const grid = byId("product-grid");
@@ -380,6 +522,8 @@ async function initProducts() {
     select.innerHTML = `<option value="">${label}</option>` + values.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
   }
   const requestedCategory = new URLSearchParams(location.search).get("category");
+  const requestedSearch = new URLSearchParams(location.search).get("q") || new URLSearchParams(location.search).get("search");
+  if (requestedSearch && search) search.value = requestedSearch;
   if (requestedCategory && category) {
     const normalizedRequest = requestedCategory.trim().toLowerCase();
     const matchingCategory = categories.find(value => value.toLowerCase() === normalizedRequest);
@@ -394,6 +538,9 @@ async function initProducts() {
     }
   }
   apply();
+  if (location.hash === "#filter-search" && search) {
+    window.setTimeout(() => { search.focus(); search.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" }); }, 0);
+  }
   [search, category, brand, condition, sort].forEach(control => control?.addEventListener("input", apply));
   [category, brand, condition, sort].forEach(control => control?.addEventListener("change", apply));
 }
@@ -694,6 +841,7 @@ async function initSettings() {
     element.hidden = false;
   });
   setupWhatsAppContact(businessWhatsAppNumber);
+  renderPromotions(settings);
   const footerBrand = document.querySelector(".footer-brand");
   if (footerBrand && (settings.publicEmail || settings.publicPhone) && !footerBrand.querySelector("[data-setting='publicEmail'], [data-setting='publicPhone']")) {
     const contact = document.createElement("p");
@@ -710,8 +858,27 @@ async function initSettings() {
   document.querySelectorAll("[data-year]").forEach(element => { element.textContent = String(new Date().getFullYear()); });
 }
 
+async function initHomepage() {
+  const featured = byId("featured-products");
+  if (!featured) return;
+  if (!isFirebaseConfigured) {
+    await initMobileCollections();
+    return;
+  }
+  showProductLoading(featured);
+  try {
+    const products = await getProducts({ max: 200 });
+    renderProductList(featured, products.filter(product => product.featured === true).slice(0, 4), "No featured products are available yet. Please browse the catalogue.");
+  } catch (error) {
+    showError(featured, error);
+  }
+    initMobileCollections(products);
+}
+
 setupAnnouncement();
 setupNavigation();
+setupMobileSearch();
+setupMobileBottomNav();
 setupHomeHero();
 setupReveals();
 setupWhatsAppContact(businessWhatsAppNumber);
@@ -723,5 +890,4 @@ initProducts();
 initProductDetails();
 initContact();
 initServiceEnquiry();
-const featured = byId("featured-products");
-if (featured) loadProductGrid(featured, { featured: true, max: 4 });
+initHomepage();

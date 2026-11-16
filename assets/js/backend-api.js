@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "./api-config.js?v=20261114-public-api";
+import { API_BASE_URL } from "./api-config.js?v=20261116-live";
 
 export async function backendRequest(path, { headers = {}, ...options } = {}) {
   if (!API_BASE_URL) throw new Error("The production API URL has not been configured.");

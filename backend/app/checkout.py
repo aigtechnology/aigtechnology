@@ -233,8 +233,6 @@ def _order_created_response(
         "amount": str(order.total_amount),
         "currency": "INR",
         "provider": payment.provider if payment else settings.payment_provider,
-        "test_mode": settings.payment_provider == "mock",
-        "test_mode_notice": "TEST MODE — no real payment or bank transaction occurs." if settings.payment_provider == "mock" else None,
     }
 
 

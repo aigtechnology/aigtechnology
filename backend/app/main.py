@@ -101,7 +101,7 @@ def validate_database() -> None:
             raise RuntimeError("Production validation requires live Razorpay credentials and a webhook secret.")
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-        if revision != "20261107_01":
+        if revision != "20261114_03":
             raise RuntimeError("Database migrations are not at the expected Alembic revision.")
         return
     with engine.connect():

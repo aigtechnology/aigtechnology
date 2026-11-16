@@ -1,4 +1,4 @@
-import { backendRequest } from "./backend-api.js?v=20261107-api-config";
+import { backendRequest } from "./backend-api.js?v=20261116-live";
 import { clearCart, readCart, removeCartItem, updateCartItem } from "./cart-store.js";
 
 const byId = id => document.getElementById(id);

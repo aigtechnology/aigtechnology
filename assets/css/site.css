@@ -422,7 +422,7 @@ th { color: var(--text-secondary); font-size: .86rem; background: var(--backgrou
   .home-header .main-nav a:not(.button) { color: var(--text-primary); }
   .home-header .main-nav a:not(.button):hover, .home-header .main-nav a:not(.button)[aria-current="page"] { color: var(--brand-blue-dark); }
   .home-header .nav-dropdown-toggle { color: var(--brand-navy); }
-  .home-hero { min-height: 420px; padding: 72px 0 48px; }
+  .home-hero { min-height: 360px; padding: 54px 0 34px; }
   .home-hero__video { display: block; opacity: .64; }
   .home-hero .hero-grid { min-height: 300px; align-items: end; }
   .home-hero h1 { font-size: clamp(2.15rem, 10vw, 3.5rem); }
@@ -452,7 +452,7 @@ th { color: var(--text-secondary); font-size: .86rem; background: var(--backgrou
   .home-header .main-nav a:not(.button), .home-header.scrolled .main-nav a:not(.button) { color: var(--text-primary); }
   .home-header .main-nav a:not(.button):hover, .home-header .main-nav a:not(.button)[aria-current="page"] { color: var(--brand-blue-dark); }
   .home-header .nav-dropdown-toggle { color: var(--brand-navy); }
-  .home-hero { min-height: 420px; padding: 72px 0 48px; }
+  .home-hero { min-height: 360px; padding: 54px 0 34px; }
   .home-hero__video { display: block; opacity: .64; }
   .home-hero .hero-grid { min-height: 300px; align-items: end; }
   .home-hero h1 { font-size: clamp(2.15rem, 10vw, 3.5rem); }
@@ -691,4 +691,24 @@ input:focus, textarea:focus, select:focus { border-color: var(--brand-blue); box
   .product-actions .button-whatsapp { grid-column: 1 / -1; }
   .cart-line { gap: 12px; }
   .form-panel, .service-enquiry-panel { padding: 20px 16px; }
+}
+
+/* Mobile home overrides must follow the legacy homepage media rules. */
+@media (max-width: 760px) {
+  .home-header { position: sticky; top: 0; background: rgba(255, 255, 255, .97); box-shadow: 0 1px 0 rgba(23, 61, 143, .08); }
+  .home-header .header-inner { min-height: 62px; flex-wrap: nowrap; padding: 5px 0; }
+  .home-header .brand img { width: 94px; }
+  .home-header .menu-toggle { color: var(--brand-navy); border-color: var(--border-color); background: #fff; }
+  .home-header .main-nav { top: calc(100% - 2px); border-color: var(--border-color); background: rgba(255, 255, 255, .99); }
+  .home-header .main-nav a:not(.button), .home-header.scrolled .main-nav a:not(.button) { color: var(--text-primary); }
+  .home-header .main-nav a:not(.button):hover, .home-header .main-nav a:not(.button)[aria-current="page"] { color: var(--brand-blue-dark); }
+  .home-header .nav-dropdown-toggle { color: var(--brand-navy); }
+  .home-hero { min-height: 360px; padding: 54px 0 34px; }
+  .home-hero__video { display: block; opacity: .64; }
+  .home-hero .hero-grid { min-height: 260px; align-items: end; }
+  .home-hero h1 { font-size: clamp(2.15rem, 10vw, 3.5rem); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-hero__video { display: none; }
+  .home-hero__media-controls { display: none; }
 }

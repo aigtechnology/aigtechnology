@@ -22,9 +22,11 @@ let productCategories = defaultProductCategories;
 function renderMobileCategoryRail() {
   const rail = byId("mobile-category-nav");
   if (!rail) return;
+  const selectedCategory = (new URLSearchParams(location.search).get("category") || "").trim().toLowerCase();
   rail.replaceChildren(...productCategories.map((category, index) => {
     const link = document.createElement("a");
-    link.className = `mobile-category${index === 0 ? " is-active" : ""}`;
+    const isActive = selectedCategory ? category.toLowerCase() === selectedCategory : index === 0;
+    link.className = `mobile-category${isActive ? " is-active" : ""}`;
     link.href = index === 0 ? "products.html" : `products.html?category=${encodeURIComponent(category)}`;
     link.innerHTML = `<span class="mobile-category__icon" aria-hidden="true">${escapeHtml(category.split(/\s+/).map(word => word[0]).join("").slice(0, 2).toUpperCase())}</span><span>${escapeHtml(index === 0 ? "For you" : category)}</span>`;
     return link;
@@ -866,13 +868,14 @@ async function initHomepage() {
     return;
   }
   showProductLoading(featured);
+  let products = [];
   try {
-    const products = await getProducts({ max: 200 });
+    products = await getProducts({ max: 200 });
     renderProductList(featured, products.filter(product => product.featured === true).slice(0, 4), "No featured products are available yet. Please browse the catalogue.");
   } catch (error) {
     showError(featured, error);
   }
-    initMobileCollections(products);
+  initMobileCollections(products);
 }
 
 setupAnnouncement();

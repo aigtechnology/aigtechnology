@@ -410,6 +410,17 @@ th { color: var(--text-secondary); font-size: .86rem; background: var(--backgrou
 .promo-card img { width: 100%; height: 100%; min-height: 180px; object-fit: cover; }
 .promo-card > div { display: flex; flex-direction: column; justify-content: center; padding: 20px; }
 .promo-card h3 { margin: 0 0 8px; }
+.homepage-video-rail { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(280px, 38vw); gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px 2px 12px; }
+.homepage-video-card { min-width: 0; overflow: hidden; scroll-snap-align: start; padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: #fff; box-shadow: var(--shadow-sm); }
+.homepage-video-card video { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--radius-md); background: #0d1728; }
+.homepage-video-card h3 { margin: 10px 2px 2px; font-size: 1rem; }
+.homepage-content-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.content-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.content-editor-heading h3 { margin: 0; }
+.home-content-row { margin-bottom: 12px; padding: 14px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--background-secondary); }
+.home-content-row small { display: block; margin-top: 5px; color: var(--text-secondary); }
+.content-active { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; margin-right: 12px; }
+.content-active input { width: auto; min-height: 0; }
 .product-rail { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(250px, 78vw); gap: 14px; overflow-x: auto; padding: 4px 2px 14px; scroll-snap-type: x mandatory; }
 .product-rail .product-card { min-width: 0; scroll-snap-align: start; }
 .product-rail .empty-state { min-width: 260px; }
@@ -460,9 +471,11 @@ th { color: var(--text-secondary); font-size: .86rem; background: var(--backgrou
   .promo-section:not([hidden]) { display: block; padding-block: 28px; }
   .promo-card { grid-template-columns: 1fr; min-height: 0; }
   .promo-card img { height: 140px; min-height: 0; }
+  .homepage-content-columns { grid-template-columns: 1fr; }
+  .homepage-video-rail { grid-auto-columns: minmax(270px, 82vw); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .promo-rail, .product-rail { scroll-behavior: auto; }
+  .promo-rail, .homepage-video-rail, .product-rail { scroll-behavior: auto; }
 }
 
 /* Final mobile precedence: this follows the legacy home-hero rules. */

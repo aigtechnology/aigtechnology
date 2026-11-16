@@ -58,3 +58,34 @@ export async function uploadProductImage(file, onProgress = () => {}) {
     alt: file.name.replace(/\.[^.]+$/, "").slice(0, 120)
   };
 }
+
+export async function uploadHomepageMedia(file, resourceType = "image", onProgress = () => {}) {
+  if (!file || typeof file.size !== "number" || typeof file.type !== "string") throw new Error("Choose a file before uploading.");
+  if (!cloudinaryConfig.cloudName || !cloudinaryConfig.unsignedUploadPreset) throw new Error("Cloudinary is not configured.");
+  const isVideo = resourceType === "video";
+  const allowed = isVideo ? ["video/mp4", "video/webm", "video/quicktime"] : ["image/jpeg", "image/png", "image/webp"];
+  const maxSize = isVideo ? 100 * 1024 * 1024 : 8 * 1024 * 1024;
+  if (!allowed.includes(file.type)) throw new Error(isVideo ? "Use an MP4, WebM, or MOV video." : "Use a JPEG, PNG, or WebP image.");
+  if (file.size <= 0 || file.size > maxSize) throw new Error(`The ${isVideo ? "video" : "image"} is too large.`);
+  const form = new FormData();
+  form.append("file", file);
+  form.append("upload_preset", cloudinaryConfig.unsignedUploadPreset);
+  const result = await new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudinaryConfig.cloudName)}/${isVideo ? "video" : "image"}/upload`);
+    request.timeout = 300000;
+    request.upload.addEventListener("progress", event => { if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100)); });
+    request.addEventListener("load", () => {
+      let body = null;
+      try { body = JSON.parse(request.responseText); } catch {}
+      if (request.status < 200 || request.status >= 300) return reject(new Error(body?.error?.message || `Cloudinary upload failed with HTTP ${request.status}.`));
+      resolve(body);
+    });
+    request.addEventListener("error", () => reject(new Error("The Cloudinary upload failed.")));
+    request.addEventListener("timeout", () => reject(new Error("The Cloudinary upload timed out.")));
+    request.send(form);
+  });
+  const url = new URL(result?.secure_url || "");
+  if (url.protocol !== "https:" || url.hostname !== "res.cloudinary.com" || !result.public_id) throw new Error("Cloudinary returned an invalid media URL.");
+  return { url: result.secure_url, publicId: result.public_id, resourceType: isVideo ? "video" : "image" };
+}

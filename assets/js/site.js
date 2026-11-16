@@ -534,6 +534,30 @@ function renderPromotions(settings) {
   section.hidden = false;
 }
 
+function renderHomepageVideos(settings) {
+  const videos = Array.isArray(settings.homepageVideos)
+    ? settings.homepageVideos.filter(item => item && item.active !== false && /^https:\/\//i.test(String(item.video || "")))
+    : [];
+  const existing = byId("homepage-videos");
+  if (!videos.length) {
+    if (existing) existing.remove();
+    return;
+  }
+  let section = existing;
+  if (!section) {
+    section = document.createElement("section");
+    section.className = "section homepage-video-section";
+    section.id = "homepage-videos";
+    section.setAttribute("aria-labelledby", "homepage-videos-title");
+    section.innerHTML = '<div class="container"><div class="section-heading"><p class="eyebrow">AIG TECHNOLOGY</p><h2 id="homepage-videos-title">Explore our latest videos</h2></div><div class="homepage-video-rail" data-homepage-video-rail></div></div>';
+    document.querySelector(".home-hero")?.after(section);
+  }
+  const rail = section.querySelector("[data-homepage-video-rail]");
+  if (!rail) return;
+  rail.innerHTML = videos.map(video => `<article class="homepage-video-card"><video controls muted playsinline preload="metadata"${video.poster ? ` poster="${escapeHtml(video.poster)}"` : ""}><source src="${escapeHtml(video.video)}"></video>${video.title ? `<h3>${escapeHtml(video.title)}</h3>` : ""}</article>`).join("");
+  section.hidden = false;
+}
+
 async function initProducts() {
   await settingsInitialization;
   const grid = byId("product-grid");
@@ -924,6 +948,7 @@ async function initSettings() {
     element.hidden = false;
   });
   setupWhatsAppContact(businessWhatsAppNumber);
+  renderHomepageVideos(settings);
   renderPromotions(settings);
   const footerBrand = document.querySelector(".footer-brand");
   if (footerBrand && (settings.publicEmail || settings.publicPhone) && !footerBrand.querySelector("[data-setting='publicEmail'], [data-setting='publicPhone']")) {

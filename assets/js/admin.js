@@ -6,7 +6,7 @@ import {
   adminListCatalogProductsForImport, adminListEnquiries, adminListProducts, readAdminSettings, removeEnquiry,
   removeProduct, saveProduct, savePublicSettings, updateEnquiry, updateProductCheckoutFields
 } from "./firestore.js?v=20261107-safe-catalog";
-import { uploadProductImage } from "./cloudinary.js";
+import { uploadHomepageMedia, uploadProductImage } from "./cloudinary.js";
 
 const $ = selector => document.querySelector(selector);
 const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
@@ -505,6 +505,7 @@ async function loadSettings() {
     form.elements[key].value = data[key] || "";
   }
   form.elements.announcementEnabled.checked = data.announcementEnabled !== false;
+  renderHomepageContent(data);
   form.addEventListener("submit", async event => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(form));
@@ -524,6 +525,62 @@ async function loadSettings() {
     catch (error) { statusMessage(status, `Could not save settings: ${error.message}`, true); }
     finally { button.disabled = false; }
   });
+  const homepageButton = $("#save-homepage-content");
+  homepageButton?.addEventListener("click", async () => {
+    const homepageStatus = $("#homepage-content-status");
+    homepageButton.disabled = true;
+    try {
+      await savePublicSettings(collectHomepageContent());
+      statusMessage(homepageStatus, "Homepage banners and videos saved.");
+    } catch (error) { statusMessage(homepageStatus, `Could not save homepage content: ${error.message}`, true); }
+    finally { homepageButton.disabled = false; }
+  });
+}
+
+function renderHomepageContent(settings = {}) {
+  const editor = $("#homepage-content-editor");
+  if (!editor) return;
+  const banners = Array.isArray(settings.homepageBanners) ? settings.homepageBanners : [];
+  const videos = Array.isArray(settings.homepageVideos) ? settings.homepageVideos : [];
+  editor.innerHTML = `<div class="homepage-content-columns"><div><div class="content-editor-heading"><h3>Offer banners</h3><button class="button button-secondary button-small" type="button" data-add-home-content="banner">+ Add banner</button></div><div data-home-content-list="banner"></div></div><div><div class="content-editor-heading"><h3>Video slides</h3><button class="button button-secondary button-small" type="button" data-add-home-content="video">+ Add video</button></div><div data-home-content-list="video"></div></div></div>`;
+  const add = (type, item = {}) => {
+    const row = document.createElement("article");
+    row.className = "home-content-row";
+    row.dataset.homeContentRow = type;
+    if (type === "banner") row.innerHTML = `<div class="form-grid"><div class="field"><label>Banner title</label><input data-content-field="title" maxlength="120" value="${escapeHtml(item.title || "")}"></div><div class="field"><label>Link (optional)</label><input data-content-field="href" maxlength="300" placeholder="products.html" value="${escapeHtml(item.href || "")}"></div><div class="field full"><label>Supporting text</label><input data-content-field="text" maxlength="240" value="${escapeHtml(item.text || "")}"></div><div class="field full"><label>Cloudinary image URL</label><input data-content-field="image" maxlength="500" value="${escapeHtml(item.image || "")}"><input type="file" accept="image/jpeg,image/png,image/webp" data-media-upload="banner-image"><small>Upload an image or paste an HTTPS Cloudinary URL.</small></div></div><label class="content-active"><input type="checkbox" data-content-field="active"${item.active !== false ? " checked" : ""}> Active</label> <button class="button button-small button-danger" type="button" data-remove-home-content>Remove</button>`;
+    else row.innerHTML = `<div class="form-grid"><div class="field"><label>Video title</label><input data-content-field="title" maxlength="120" value="${escapeHtml(item.title || "")}"></div><div class="field"><label>Poster image URL</label><input data-content-field="poster" maxlength="500" value="${escapeHtml(item.poster || "")}"><input type="file" accept="image/jpeg,image/png,image/webp" data-media-upload="video-poster"><small>Optional fallback image.</small></div><div class="field full"><label>Cloudinary video URL</label><input data-content-field="video" maxlength="500" value="${escapeHtml(item.video || "")}"><input type="file" accept="video/mp4,video/webm,video/quicktime" data-media-upload="video"><small>Upload an MP4/WebM/MOV video or paste an HTTPS Cloudinary video URL.</small></div></div><label class="content-active"><input type="checkbox" data-content-field="active"${item.active !== false ? " checked" : ""}> Active</label> <button class="button button-small button-danger" type="button" data-remove-home-content>Remove</button>`;
+    row.querySelector("[data-remove-home-content]").addEventListener("click", () => row.remove());
+    row.querySelectorAll("[data-media-upload]").forEach(input => input.addEventListener("change", async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const status = document.querySelector("#homepage-content-status");
+      input.disabled = true;
+      try {
+        const kind = input.dataset.mediaUpload === "video" ? "video" : "image";
+        const uploaded = await uploadHomepageMedia(file, kind, progress => { status.textContent = `Uploading ${kind}: ${progress}%`; });
+        row.querySelector(`[data-content-field="${input.dataset.mediaUpload === "video" ? "video" : input.dataset.mediaUpload === "video-poster" ? "poster" : "image"}"]`).value = uploaded.url;
+        status.textContent = `${kind === "video" ? "Video" : "Image"} uploaded to Cloudinary.`;
+      } catch (error) { statusMessage(status, error.message, true); }
+      finally { input.disabled = false; input.value = ""; }
+    }));
+    editor.querySelector(`[data-home-content-list="${type}"]`).append(row);
+  };
+  banners.forEach(item => add("banner", item));
+  videos.forEach(item => add("video", item));
+  editor.querySelectorAll("[data-add-home-content]").forEach(button => button.addEventListener("click", () => add(button.dataset.addHomeContent)));
+  editor.dataset.ready = "true";
+}
+
+function collectHomepageContent() {
+  const editor = $("#homepage-content-editor");
+  const readUrl = value => { const text = String(value || "").trim(); if (text && !/^https:\/\//i.test(text) && !/^[a-z0-9/_?=&.#-]+$/i.test(text)) throw new Error("Media URLs must be HTTPS Cloudinary URLs or safe site links."); return text; };
+  const rows = type => [...editor.querySelectorAll(`[data-home-content-row="${type}"]`)].map(row => {
+    const value = name => row.querySelector(`[data-content-field="${name}"]`)?.value.trim() || "";
+    const active = row.querySelector('[data-content-field="active"]')?.checked !== false;
+    if (type === "banner") { const title = value("title"); const image = readUrl(value("image")); if (!title && !image) throw new Error("Each banner needs a title or image."); return { title, text: value("text"), image, href: value("href"), active }; }
+    const title = value("title"); const video = readUrl(value("video")); if (!video) throw new Error("Each video slide needs a Cloudinary video URL."); return { title, video, poster: readUrl(value("poster")), active };
+  });
+  return { homepageBanners: rows("banner"), homepageVideos: rows("video") };
 }
 
 if (document.body.dataset.adminPage === "login") loginPage();

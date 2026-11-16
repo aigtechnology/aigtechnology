@@ -104,7 +104,7 @@ service cloud.firestore {
           'name', 'slug', 'brand', 'model', 'category', 'sku', 'description',
           'specifications', 'condition', 'price', 'availability', 'stockQuantity',
           'warranty', 'images', 'featured', 'published', 'searchKeywords',
-          'createdAt', 'updatedAt'
+          'upgradeOptions', 'createdAt', 'updatedAt'
         ])
         && data.keys().hasAll([
           'name', 'slug', 'brand', 'model', 'category', 'sku', 'description',
@@ -125,6 +125,7 @@ service cloud.firestore {
         && data.featured is bool
         && data.specifications is map
         && data.specifications.size() <= 40
+        && (!('upgradeOptions' in data) || data.upgradeOptions is map)
         && validProductImages(data.images)
         && optionalString(data, 'brand', 100)
         && optionalString(data, 'model', 100)
@@ -142,10 +143,13 @@ service cloud.firestore {
       return data.keys().hasOnly([
           'publicPhone', 'publicEmail', 'whatsappNumber', 'address',
           'businessHours', 'footerText', 'homepageHeadline', 'updatedAt',
-          'announcementText', 'announcementEnabled', 'categories'
+          'announcementText', 'announcementEnabled', 'categories',
+          'homepageBanners', 'homepageVideos'
         ])
         && data.updatedAt == request.time
         && validCategories(data)
+        && (!('homepageBanners' in data) || (data.homepageBanners is list && data.homepageBanners.size() <= 20))
+        && (!('homepageVideos' in data) || (data.homepageVideos is list && data.homepageVideos.size() <= 10))
         && optionalString(data, 'publicPhone', 40)
         && optionalString(data, 'publicEmail', 254)
         && optionalString(data, 'whatsappNumber', 15)

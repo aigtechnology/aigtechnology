@@ -530,7 +530,26 @@ function renderPromotions(settings) {
   }
   const rail = section.querySelector("[data-promo-rail]");
   if (!rail) return;
-  rail.innerHTML = banners.map(banner => `<article class="promo-card">${banner.image ? (banner.href ? `<a class="promo-card__media-link" href="${escapeHtml(banner.href)}" aria-label="${escapeHtml(banner.title || "Explore AIG Technology")}"><img src="${escapeHtml(banner.image)}" alt="${escapeHtml(banner.title || "AIG Technology promotion")}" loading="lazy"></a>` : `<img src="${escapeHtml(banner.image)}" alt="${escapeHtml(banner.title || "AIG Technology promotion")}" loading="lazy">`) : ""}<div><p class="eyebrow">AIG TECHNOLOGY</p><h3>${escapeHtml(banner.title || "Explore our catalogue")}</h3>${banner.text ? `<p>${escapeHtml(banner.text)}</p>` : ""}${banner.href ? `<a class="button button-small" href="${escapeHtml(banner.href)}">Explore</a>` : ""}</div></article>`).join("");
+  const cards = banners.map(banner => `<article class="promo-card">${banner.image ? (banner.href ? `<a class="promo-card__media-link" href="${escapeHtml(banner.href)}" aria-label="${escapeHtml(banner.title || "Explore AIG Technology")}"><img src="${escapeHtml(banner.image)}" alt="${escapeHtml(banner.title || "AIG Technology promotion")}" loading="lazy"></a>` : `<img src="${escapeHtml(banner.image)}" alt="${escapeHtml(banner.title || "AIG Technology promotion")}" loading="lazy">`) : ""}<div><p class="eyebrow">AIG TECHNOLOGY</p><h3>${escapeHtml(banner.title || "Explore our catalogue")}</h3>${banner.text ? `<p>${escapeHtml(banner.text)}</p>` : ""}${banner.href ? `<a class="button button-small" href="${escapeHtml(banner.href)}">Explore</a>` : ""}</div></article>`);
+  if (rail._promoTimer) window.clearInterval(rail._promoTimer);
+  rail.innerHTML = cards.length > 1 ? [cards[cards.length - 1], ...cards, cards[0]].join("") : cards.join("");
+  if (cards.length > 1 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const firstCard = rail.querySelector(".promo-card");
+    const gap = parseFloat(getComputedStyle(rail).columnGap || "0");
+    const cardStep = () => (firstCard?.getBoundingClientRect().width || 0) + gap;
+    requestAnimationFrame(() => { rail.scrollLeft = cardStep(); });
+    const normalize = () => {
+      const step = cardStep();
+      if (!step) return;
+      if (rail.scrollLeft >= step * (cards.length + 1) - 2) rail.scrollTo({ left: step, behavior: "auto" });
+      else if (rail.scrollLeft <= 1) rail.scrollTo({ left: step * cards.length, behavior: "auto" });
+    };
+    rail.addEventListener("scroll", normalize, { passive: true });
+    rail._promoTimer = window.setInterval(() => {
+      if (document.hidden || rail.matches(":hover") || rail.matches(":focus-within")) return;
+      rail.scrollBy({ left: cardStep(), behavior: "smooth" });
+    }, 4200);
+  }
   section.hidden = false;
 }
 

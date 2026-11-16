@@ -157,7 +157,7 @@ def health_ready() -> JSONResponse:
         checks["database"] = "unavailable"
         logger.exception("Readiness database check failed")
 
-    if settings.rate_limit_storage_uri:
+    if settings.rate_limit_storage_uri and settings.rate_limit_storage_uri.startswith(("redis://", "rediss://")):
         client = Redis.from_url(
             settings.rate_limit_storage_uri,
             socket_connect_timeout=2,
@@ -171,6 +171,8 @@ def health_ready() -> JSONResponse:
             logger.exception("Readiness rate-limit store check failed")
         finally:
             client.close()
+    elif settings.rate_limit_storage_uri == "memory://":
+        checks["redis"] = "ok"
     elif settings.app_env == "production":
         checks["redis"] = "not_configured"
 

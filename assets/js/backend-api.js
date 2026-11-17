@@ -4,6 +4,7 @@ export async function backendRequest(path, { headers = {}, ...options } = {}) {
   if (!API_BASE_URL) throw new Error("The production API URL has not been configured.");
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
+    credentials: options.credentials || "include",
     headers: { "Content-Type": "application/json", ...headers }
   });
   let payload = null;

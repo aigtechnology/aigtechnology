@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "./api-config.js?v=20261116-purchase-audit";
+import { auth } from "./firebase-client.js";
 
 export const PURCHASE_STORAGE_KEY = "aig_purchase_verification";
 export const MOBILE_PATTERN = /^[6-9]\d{9}$/;
@@ -11,10 +12,12 @@ export function normalizeMobile(value) {
 
 export async function verifyPurchase({ invoiceNumber, mobile }) {
   if (!API_BASE_URL) throw new Error("The API address is not configured for this site.");
+  const headers = { "Content-Type": "application/json" };
+  if (auth?.currentUser) headers.Authorization = `Bearer ${await auth.currentUser.getIdToken()}`;
   const response = await fetch(`${API_BASE_URL}/customer/verify-purchase`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       invoice_type: null,
       invoice_number: invoiceNumber,

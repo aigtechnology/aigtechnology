@@ -139,6 +139,13 @@ class PurchaseVerificationRequest(BaseModel):
     mobile: str = Field(pattern=r"^[6-9][0-9]{9}$")
 
 
+class FirebaseCustomerSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    invoice_number: str | None = Field(default=None, min_length=1, max_length=120)
+    mobile: str | None = Field(default=None, pattern=r"^[6-9][0-9]{9}$")
+
+
 class ServiceRequestCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

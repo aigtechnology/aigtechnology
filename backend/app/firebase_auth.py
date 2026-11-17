@@ -15,9 +15,9 @@ def _jwks_client() -> PyJWKClient:
     return PyJWKClient(FIREBASE_JWKS_URL, cache_keys=True)
 
 
-def require_firebase_admin(authorization: str | None = Header(default=None)) -> dict[str, object]:
+def verify_firebase_token(authorization: str | None) -> dict[str, object]:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Firebase administrator token required")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Firebase authentication token required")
     token = authorization[7:]
     try:
         signing_key = _jwks_client().get_signing_key_from_jwt(token)
@@ -30,7 +30,12 @@ def require_firebase_admin(authorization: str | None = Header(default=None)) -> 
             options={"require": ["exp", "iat", "aud", "iss", "sub"]},
         )
     except (jwt.PyJWTError, ValueError) as error:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Firebase administrator token") from error
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Firebase authentication token") from error
+    return claims
+
+
+def require_firebase_admin(authorization: str | None = Header(default=None)) -> dict[str, object]:
+    claims = verify_firebase_token(authorization)
     if claims.get("sub") != ADMIN_UID and claims.get("admin") is not True:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required")
     return claims

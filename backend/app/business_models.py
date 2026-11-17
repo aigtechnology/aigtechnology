@@ -147,6 +147,8 @@ class WebsiteCustomer(Base):
     phone = Column(String(20), nullable=False, index=True)
     normalized_phone = Column(String(10), nullable=False, index=True)
     email = Column(String(254), nullable=False, index=True)
+    firebase_uid = Column(String(128), nullable=True, unique=True, index=True)
+    auth_provider = Column(String(30), nullable=False, default="guest", server_default="guest")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     addresses = relationship("WebsiteAddress", back_populates="customer", cascade="all, delete-orphan")
@@ -216,7 +218,7 @@ class CustomerSession(Base):
     id = Column(Integer, primary_key=True)
     token_hash = Column(String(64), unique=True, index=True, nullable=False)
     customer_id = Column(ForeignKey("website_customers.id", ondelete="SET NULL"), index=True)
-    normalized_phone = Column(String(10), nullable=False, index=True)
+    normalized_phone = Column(String(10), nullable=True, index=True)
     expires_at = Column(DateTime(timezone=True), index=True, nullable=False)
     revoked_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

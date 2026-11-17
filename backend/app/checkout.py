@@ -233,7 +233,12 @@ def _lookup_token(order_id: str) -> str:
     ).hexdigest()
 
 
-def create_website_order(database: Session, payload: CreateOrderRequest, idempotency_key: str) -> dict[str, object]:
+def create_website_order(
+    database: Session,
+    payload: CreateOrderRequest,
+    idempotency_key: str,
+    firebase_uid: str | None = None,
+) -> dict[str, object]:
     if not payload.terms_accepted:
         raise HTTPException(status_code=422, detail="Accept the terms and conditions before placing the order")
     if not idempotency_key or len(idempotency_key) > 80:
@@ -263,12 +268,28 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
         .limit(1)
         .with_for_update()
     ).first()
+    firebase_customer = None
+    if firebase_uid:
+        firebase_customer = database.scalar(
+            select(WebsiteCustomer)
+            .where(WebsiteCustomer.firebase_uid == firebase_uid)
+            .with_for_update()
+        )
+        if firebase_customer is not None and customer is not None and firebase_customer.id != customer.id:
+            raise HTTPException(status_code=409, detail="This Google account and mobile number belong to different customer accounts.")
+        if customer is not None and customer.firebase_uid not in {None, firebase_uid}:
+            raise HTTPException(status_code=409, detail="Verify an existing purchase before linking this Google account.")
+        if customer is not None and customer.firebase_uid is None and firebase_customer is None:
+            raise HTTPException(status_code=409, detail="Verify an existing purchase with Order ID and mobile before using Google login for this account.")
+        customer = firebase_customer or customer
     if customer is None:
         customer = WebsiteCustomer(
             full_name=payload.customer.full_name,
             email=payload.customer.email,
             phone=payload.customer.phone,
             normalized_phone=normalized_phone,
+            firebase_uid=firebase_uid,
+            auth_provider="google" if firebase_uid else "guest",
         )
         database.add(customer)
         database.flush()

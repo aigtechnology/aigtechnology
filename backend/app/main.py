@@ -30,7 +30,7 @@ from .checkout import (
 )
 from .delivery import lookup_pincode
 from .database import Base, engine, get_db
-from .firebase_auth import require_firebase_admin
+from .firebase_auth import require_firebase_admin, verify_firebase_token
 from .models import AdminSession, AdminUser
 from .business_models import (
     CustomerSession,
@@ -73,6 +73,7 @@ from .schemas import (
     PurchaseVerificationRequest,
     ServiceRequestCreate,
     ServiceRequestUpdate,
+    FirebaseCustomerSessionRequest,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -111,7 +112,7 @@ def validate_database() -> None:
             raise RuntimeError("Production validation requires live Razorpay credentials and a webhook secret.")
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-        if revision != "20261117_02":
+        if revision != "20261117_03":
             raise RuntimeError("Database migrations are not at the expected Alembic revision.")
         return
     with engine.connect():
@@ -252,6 +253,9 @@ def _serialize_website_order_admin_detail(order: WebsiteOrder) -> dict[str, obje
         "customer": customer.full_name,
         "customer_email": customer.email,
         "customer_phone": customer.phone,
+        "customer_account_id": customer.id,
+        "customer_firebase_uid": customer.firebase_uid,
+        "customer_auth_provider": customer.auth_provider or "guest",
         "status": order.status,
         "payment_status": order.payment_status,
         "payment_method": payment.provider if payment else None,
@@ -384,9 +388,13 @@ def create_order(
     request: Request,
     payload: CreateOrderRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    authorization: str | None = Header(default=None),
     database: Session = Depends(get_db),
 ) -> dict[str, object]:
-    return create_website_order(database, payload, idempotency_key or "")
+    firebase_uid = None
+    if authorization:
+        firebase_uid = str(verify_firebase_token(authorization).get("sub") or "") or None
+    return create_website_order(database, payload, idempotency_key or "", firebase_uid=firebase_uid)
 
 
 def _normalize_mobile(value: str) -> str:
@@ -415,7 +423,7 @@ def _customer_session(database: Session, token: str | None) -> CustomerSession:
     return session
 
 
-def _issue_customer_session(database: Session, customer_id: int | None, normalized_phone: str, response: Response) -> None:
+def _issue_customer_session(database: Session, customer_id: int | None, normalized_phone: str | None, response: Response) -> None:
     token = secrets.token_urlsafe(32)
     database.add(CustomerSession(
         token_hash=_customer_session_hash(token),
@@ -432,6 +440,57 @@ def _issue_customer_session(database: Session, customer_id: int | None, normaliz
         samesite="lax",
         path="/",
     )
+
+
+def _link_firebase_customer(database: Session, customer: WebsiteCustomer, claims: dict[str, object]) -> None:
+    firebase_uid = str(claims.get("sub") or "")
+    if not firebase_uid:
+        raise HTTPException(status_code=401, detail="Firebase account identity is missing")
+    linked = database.scalar(
+        select(WebsiteCustomer).where(WebsiteCustomer.firebase_uid == firebase_uid).with_for_update()
+    )
+    if linked is not None and linked.id != customer.id:
+        raise HTTPException(status_code=409, detail="This Google account is already linked to another customer account")
+    if customer.firebase_uid not in {None, firebase_uid}:
+        raise HTTPException(status_code=409, detail="This customer account is already linked to another Google account")
+    customer.firebase_uid = firebase_uid
+    customer.auth_provider = "google"
+    email = str(claims.get("email") or "").strip()
+    name = str(claims.get("name") or "").strip()
+    if email and (not customer.email or customer.email.endswith("@guest.aigtechnology.local")):
+        customer.email = email
+    if name and not customer.full_name.strip():
+        customer.full_name = name
+
+
+@app.post("/api/customer/firebase-session", tags=["customer service"])
+@limiter.limit("10/minute")
+def customer_firebase_session(
+    request: Request,
+    payload: FirebaseCustomerSessionRequest,
+    response: Response,
+    authorization: str | None = Header(default=None),
+    database: Session = Depends(get_db),
+) -> dict[str, object]:
+    claims = verify_firebase_token(authorization)
+    firebase_uid = str(claims.get("sub") or "")
+    customer = database.scalar(select(WebsiteCustomer).where(WebsiteCustomer.firebase_uid == firebase_uid).with_for_update())
+    if payload.invoice_number or payload.mobile:
+        if not payload.invoice_number or not payload.mobile:
+            raise HTTPException(status_code=422, detail="Both purchase reference and registered mobile are required to link the account")
+        records = _find_verified_purchases(database, PurchaseVerificationRequest(invoice_number=payload.invoice_number, mobile=payload.mobile))
+        if not records:
+            raise HTTPException(status_code=404, detail="No verified purchase was found for that mobile number and reference")
+        mobile = _normalize_mobile(payload.mobile)
+        customer = database.scalar(select(WebsiteCustomer).where(WebsiteCustomer.normalized_phone == mobile).order_by(WebsiteCustomer.id).limit(1).with_for_update())
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Customer account was not found for that purchase")
+        _link_firebase_customer(database, customer, claims)
+    if customer is None:
+        return {"authenticated": False, "linked": False, "message": "Google verified. Verify a purchase with Order ID and mobile number to link your account."}
+    _issue_customer_session(database, customer.id, customer.normalized_phone, response)
+    database.commit()
+    return {"authenticated": True, "linked": True, "customer_id": customer.id}
 
 
 def _warranty_status(purchase_date: datetime, warranty_months: int) -> tuple[str, str | None]:
@@ -531,6 +590,7 @@ def verify_customer_purchase(
     request: Request,
     payload: PurchaseVerificationRequest,
     response: Response,
+    authorization: str | None = Header(default=None),
     database: Session = Depends(get_db),
 ) -> dict[str, object]:
     records = _find_verified_purchases(database, payload)
@@ -543,7 +603,12 @@ def verify_customer_purchase(
         .join(WebsiteCustomer, WebsiteOrder.customer_id == WebsiteCustomer.id)
         .where(WebsiteCustomer.normalized_phone == mobile, WebsiteOrder.order_id == payload.invoice_number)
     )
-    _issue_customer_session(database, online_order.customer_id if online_order else (customer.id if customer else None), mobile, response)
+    target_customer = online_order.customer if online_order else customer
+    if target_customer is None:
+        raise HTTPException(status_code=404, detail="Customer account was not found for that purchase")
+    if authorization:
+        _link_firebase_customer(database, target_customer, verify_firebase_token(authorization))
+    _issue_customer_session(database, target_customer.id, mobile, response)
     database.commit()
     first = records[0]
     return {**first, "verified": True, "account_authenticated": True, "verified_mobile": mobile, "purchases": records}
@@ -750,6 +815,7 @@ async def create_payment_order(
 async def verify_payment(
     request: Request,
     payload: VerifyPaymentRequest,
+    response: Response,
     lookup_token: str | None = Header(default=None, alias="X-Order-Access-Token"),
     database: Session = Depends(get_db),
 ) -> dict[str, object]:
@@ -760,6 +826,10 @@ async def verify_payment(
     if payment is None or payment.order_id != order.id:
         raise HTTPException(status_code=404, detail="Payment not found")
     if payment.status == "Captured":
+        customer = database.get(WebsiteCustomer, order.customer_id)
+        if customer:
+            _issue_customer_session(database, customer.id, customer.normalized_phone, response)
+            database.commit()
         return {"order_id": order.order_id, "payment_status": payment.status, "order_status": order.status}
     if payment.status in {"Failed", "Refunded", "Partially Refunded"}:
         raise HTTPException(status_code=409, detail="Payment attempt is already in a terminal state")
@@ -793,7 +863,13 @@ async def verify_payment(
     if conflicting_payment:
         raise HTTPException(status_code=409, detail="Razorpay payment is already assigned to another order")
     payment.provider_payment_id = payload.razorpay_payment_id
-    return await _reconcile_razorpay_payment(database, payment, provider_payment)
+    result = await _reconcile_razorpay_payment(database, payment, provider_payment)
+    if result.get("payment_status") == "Captured":
+        customer = database.get(WebsiteCustomer, order.customer_id)
+        if customer:
+            _issue_customer_session(database, customer.id, customer.normalized_phone, response)
+            database.commit()
+    return {"order_id": order.order_id, **result}
 
 
 async def _reconcile_razorpay_payment(

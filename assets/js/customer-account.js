@@ -4,6 +4,8 @@ import {
   readVerifiedPurchase
 } from "./purchase-verification.js?v=20261116-purchase-audit-2";
 import { API_BASE_URL } from "./api-config.js?v=20261117-customer-account";
+import { signOut as firebaseSignOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import { auth } from "./firebase-client.js";
 
 const LOGIN_PAGE = "customer-login.html";
 const profileName = document.querySelector("#customer-phone-display");
@@ -128,6 +130,10 @@ async function loadAccount() {
     renderLinkedOrders(await response.json());
   } catch { window.location.href = LOGIN_PAGE; }
 }
-signOutButton?.addEventListener("click", async () => { await fetch(`${API_BASE_URL}/customer/logout`, { method: "POST", credentials: "include" }).catch(() => {}); signOut(); });
+signOutButton?.addEventListener("click", async () => {
+  await fetch(`${API_BASE_URL}/customer/logout`, { method: "POST", credentials: "include" }).catch(() => {});
+  if (auth?.currentUser) await firebaseSignOut(auth).catch(() => {});
+  signOut();
+});
 fillCopyrightYear();
 loadAccount();

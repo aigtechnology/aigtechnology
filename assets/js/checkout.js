@@ -1,5 +1,7 @@
 import { backendRequest } from "./backend-api.js?v=20261116-live";
 import { cartItemKey, clearCart, readCart, removeCartItem, updateCartItem } from "./cart-store.js";
+import { GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import { auth, isFirebaseConfigured } from "./firebase-client.js";
 
 const byId = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -248,6 +250,51 @@ async function initCheckoutPage() {
   const status = byId("checkout-status");
   const summary = byId("checkout-summary");
   const paymentPanel = byId("payment-panel");
+  let firebaseIdToken = null;
+  const deliveryHeading = [...form.querySelectorAll("h2")].find(heading => heading.textContent.trim() === "Delivery address");
+  if (deliveryHeading) {
+    const accountChoice = document.createElement("section");
+    accountChoice.className = "checkout-account-choice";
+    accountChoice.setAttribute("aria-labelledby", "checkout-account-title");
+    accountChoice.innerHTML = `<div><p class="eyebrow">Optional</p><h3 id="checkout-account-title">Choose how to continue</h3><p class="checkout-account-choice__text">Sign in with Google to connect this order to your customer account, or continue as a guest.</p></div><div class="checkout-account-choice__actions"><button class="button button-secondary" id="checkout-google-login" type="button">Continue with Google</button><button class="button button-ghost" id="checkout-guest" type="button">Continue as guest</button></div><p class="checkout-account-choice__status" id="checkout-account-status" role="status" aria-live="polite">Guest checkout is selected by default.</p>`;
+    deliveryHeading.before(accountChoice);
+    const googleButton = byId("checkout-google-login");
+    const guestButton = byId("checkout-guest");
+    const accountStatus = byId("checkout-account-status");
+    guestButton.addEventListener("click", () => {
+      firebaseIdToken = null;
+      accountStatus.textContent = "You can place this order without signing in.";
+      accountStatus.dataset.state = "success";
+    });
+    googleButton.addEventListener("click", async () => {
+      if (!isFirebaseConfigured || !auth) {
+        accountStatus.textContent = "Google login is not available right now. You can continue as a guest.";
+        accountStatus.dataset.state = "error";
+        return;
+      }
+      googleButton.disabled = true;
+      accountStatus.textContent = "Opening Google sign-in…";
+      try {
+        const result = await signInWithPopup(auth, new GoogleAuthProvider());
+        firebaseIdToken = await result.user.getIdToken();
+        const session = await backendRequest("/customer/firebase-session", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${firebaseIdToken}` },
+          body: JSON.stringify({})
+        });
+        accountStatus.textContent = session.authenticated
+          ? `Signed in as ${result.user.displayName || result.user.email || "Google customer"}.`
+          : `Google verified for ${result.user.email || "this account"}. Your order will be linked after payment verification.`;
+        accountStatus.dataset.state = "success";
+      } catch (error) {
+        firebaseIdToken = null;
+        accountStatus.textContent = error.code === "auth/popup-closed-by-user" ? "Google sign-in was cancelled. You can continue as a guest." : (error.message || "Google sign-in failed. You can continue as a guest.");
+        accountStatus.dataset.state = "error";
+      } finally {
+        googleButton.disabled = false;
+      }
+    });
+  }
   const postalField = form.elements.postal_code;
   const cityField = form.elements.city;
   const stateField = form.elements.state;
@@ -350,7 +397,7 @@ async function initCheckoutPage() {
       }
       const order = await backendRequest("/orders/create", {
         method: "POST",
-        headers: { "Idempotency-Key": idempotencyKey },
+        headers: { "Idempotency-Key": idempotencyKey, ...(firebaseIdToken ? { Authorization: `Bearer ${firebaseIdToken}` } : {}) },
         body: JSON.stringify({
           customer,
           address: addressFrom(form),

@@ -205,6 +205,16 @@ input:focus, textarea:focus, select:focus { border-color: var(--brand-blue); out
 .form-status[data-state="success"] { color: var(--success-color); }
 .notice { padding: 14px 16px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--background-secondary); color: var(--text-secondary); }
 .notice-warning { border-color: #f0d6ab; background: #fffaf0; }
+.checkout-account-choice { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 0 0 24px; padding: 16px 18px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--background-secondary); }
+.checkout-account-choice h3, .checkout-account-choice p { margin: 0; }
+.checkout-account-choice h3 { font-size: 1rem; }
+.checkout-account-choice__text { margin-top: 4px !important; color: var(--text-secondary); font-size: .9rem; }
+.checkout-account-choice__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.checkout-account-choice__actions .button { white-space: nowrap; }
+.checkout-account-choice__status { flex-basis: 100%; color: var(--text-secondary); font-size: .85rem; }
+.checkout-account-choice__status[data-state="success"] { color: var(--success-color); }
+.checkout-account-choice__status[data-state="error"] { color: var(--danger-color); }
+@media (max-width: 640px) { .checkout-account-choice { display: block; } .checkout-account-choice__actions { justify-content: stretch; margin-top: 12px; } .checkout-account-choice__actions .button { flex: 1 1 100%; } }
 .detail-layout { display: grid; grid-template-columns: minmax(280px, .9fr) 1.1fr; gap: 40px; }
 .checkout-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, .8fr); align-items: start; gap: 28px; }
 .checkout-summary { position: sticky; top: 105px; padding: 22px; }

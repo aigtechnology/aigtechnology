@@ -492,7 +492,7 @@ th { color: var(--text-secondary); font-size: .86rem; background: var(--backgrou
   .promo-section:not([hidden]) { display: block; padding-block: 28px; }
   .promo-rail { grid-auto-columns: 86vw; scroll-padding-inline: 7vw; }
   .promo-card { grid-template-columns: 1fr; min-height: 0; }
-  .promo-card img { height: 140px; min-height: 0; }
+  .promo-card img { height: 175px; min-height: 0; }
   .homepage-content-columns { grid-template-columns: 1fr; }
   .homepage-video-rail { grid-auto-columns: minmax(270px, 82vw); }
 }
@@ -518,7 +518,7 @@ th { color: var(--text-secondary); font-size: .86rem; background: var(--backgrou
 
 /* Shared card sizing: keep product content aligned while preserving complete images. */
 .product-card { height: 100%; }
-.product-card .product-image-wrap { flex: 0 0 220px; }
+.product-card .product-image-wrap { flex: 0 0 230px; }
 .product-card .product-body { min-height: 238px; }
 .product-card .product-body h3 { display: -webkit-box; min-height: 3.75em; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .product-card .product-meta { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -531,9 +531,18 @@ th { color: var(--text-secondary); font-size: .86rem; background: var(--backgrou
   .product-card .product-body { min-height: 230px; }
 }
 
-@media (max-width: 420px) {
-  .product-card .product-image-wrap { flex-basis: 190px; }
+@media (max-width: 389px) {
+  .product-grid { grid-template-columns: 1fr; }
+  .product-card .product-image-wrap { flex-basis: 180px; }
   .product-card .product-body { min-height: 220px; padding: 14px; }
+}
+
+@media (min-width: 390px) and (max-width: 720px) {
+  .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .product-grid .product-card .product-image-wrap { flex-basis: 180px; }
+  .product-grid .product-card .product-body { min-height: 220px; padding: 14px; }
+  .product-grid .product-actions { display: grid; grid-template-columns: 1fr; }
+  .product-grid .product-actions .button { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   .home-hero__video { display: none; }

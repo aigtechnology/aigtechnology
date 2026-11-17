@@ -164,6 +164,12 @@ p { margin: 0 0 16px; }
 .configurator-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .configurator-field { display: grid; gap: 5px; font-weight: 700; font-size: .9rem; }
 .configurator-field select { width: 100%; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.colour-swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px; }
+.colour-swatch { display: inline-flex; align-items: center; gap: 6px; min-height: 42px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 999px; background: #fff; color: var(--text-primary); cursor: pointer; }
+.colour-swatch:hover, .colour-swatch.is-selected { border-color: var(--brand-blue); box-shadow: 0 0 0 2px rgba(21, 117, 181, .16); }
+.colour-swatch__dot { width: 20px; height: 20px; border-radius: 50%; background: var(--swatch); border: 1px solid rgba(0,0,0,.2); }
+.colour-swatch small { color: var(--text-muted); }
 .configurator-summary { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 15px 0; color: var(--text-secondary); }
 .configurator-summary strong { color: var(--brand-navy); font-size: 1.1rem; }
 .configurator-summary span { width: 100%; }
@@ -347,6 +353,7 @@ th { color: var(--text-secondary); font-size: .86rem; background: var(--backgrou
 [data-upgrade-rows] { display: grid; gap: 8px; margin-bottom: 10px; }
 [data-upgrade-row] { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(90px, .7fr) auto auto auto; gap: 6px; align-items: center; }
 [data-upgrade-editor="combined"] [data-upgrade-row] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(90px, .7fr) auto auto auto; }
+[data-upgrade-editor="colour"] [data-upgrade-row] { grid-template-columns: minmax(110px, 1fr) 44px minmax(140px, 1.3fr) minmax(120px, 1fr) minmax(90px, .7fr) auto auto auto auto; }
 [data-upgrade-row] input, [data-upgrade-row] select { min-width: 0; min-height: 38px; padding: 7px 9px; }
 .upgrade-check { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: .8rem; }
 .upgrade-check input { min-height: 0; width: auto; }

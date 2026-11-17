@@ -325,8 +325,8 @@ function cartButton(product) {
 
 function upgradeOptions(product) {
   const source = product.upgradeOptions && typeof product.upgradeOptions === "object" ? product.upgradeOptions : {};
-  return Object.fromEntries(["ram", "hdd", "ssd", "combined"].map(type => [type,
-    Array.isArray(source[type]) ? source[type].filter(option => option && option.id && option.label && option.available !== false) : []
+  return Object.fromEntries(["ram", "hdd", "ssd", "combined", "colour"].map(type => [type,
+    Array.isArray(source[type]) ? source[type].filter(option => option && option.id && option.label && option.available !== false && (type !== "colour" || option.stock == null || Number(option.stock) > 0)) : []
   ]));
 }
 
@@ -339,9 +339,11 @@ function productConfigurator(product) {
   if (!canPurchaseProduct(product) || !Object.values(options).some(list => list.length)) return "";
   const specs = product.specifications && typeof product.specifications === "object" ? product.specifications : {};
   const installed = type => Object.entries(specs).find(([key]) => key.toLowerCase() === type)?.[1] || "Not installed";
-  const select = (type, label) => options[type].length ? `<label class="configurator-field"><span>${label}</span><select data-upgrade-select="${type}"><option value="">Keep current &mdash; ${escapeHtml(installed(type))}</option>${options[type].map(option => `<option value="${escapeHtml(option.id)}" data-price="${escapeHtml(option.price || 0)}">${escapeHtml(option.label)}${Number(option.price || 0) ? ` (+${escapeHtml(formatPrice(option.price))})` : " (Included)"}</option>`).join("")}</select></label>` : "";
-  const currentRows = [["RAM", installed("ram")], ["HDD", installed("hdd")], ["SSD", installed("ssd")]].filter(([, value]) => value !== "Not installed" || options.ram.length || options.hdd.length || options.ssd.length);
-  return `<section class="product-configurator" data-product-configurator><h2>Customize Your Configuration</h2><div class="configurator-current"><h3>Your current configuration</h3><dl class="configurator-current__list">${currentRows.map(([label, value]) => `<dt>${label}</dt><dd data-configurator-value="${label.toLowerCase()}">${escapeHtml(value)}</dd>`).join("")}</dl></div><p class="configurator-help">Choose an enabled upgrade below. Your current configuration is always kept at no extra charge.</p><h3 class="configurator-section-title">Upgrade your configuration</h3><div class="configurator-grid">${select("ram", "RAM")}${select("hdd", "HDD")}${select("ssd", "SSD")}${select("combined", "RAM + SSD package")}</div><div class="configurator-summary" data-configurator-summary>Base price: ${escapeHtml(formatPrice(product.price))}</div><button class="button button-secondary button-small" type="button" data-configurator-reset>Reset to default</button></section>`;
+  const select = (type, label) => options[type].length ? type === "colour"
+    ? `<div class="configurator-field colour-configurator-field"><span>${label}</span><select class="visually-hidden" data-upgrade-select="colour"><option value="">Keep current</option>${options.colour.map(option => `<option value="${escapeHtml(option.id)}" data-price="${escapeHtml(option.price || 0)}">${escapeHtml(option.label)}</option>`).join("")}</select><div class="colour-swatches" role="group" aria-label="Choose product colour">${options.colour.map(option => `<button type="button" class="colour-swatch" data-colour-option="${escapeHtml(option.id)}" style="--swatch:${escapeHtml(option.colour || "#d9e2ec")}" aria-label="${escapeHtml(option.label)}${Number(option.price || 0) ? `, add ${formatPrice(option.price)}` : ""}"><span class="colour-swatch__dot" aria-hidden="true"></span><span>${escapeHtml(option.label)}</span>${Number(option.price || 0) ? `<small>+${escapeHtml(formatPrice(option.price))}</small>` : ""}</button>`).join("")}</div></div>`
+    : `<label class="configurator-field"><span>${label}</span><select data-upgrade-select="${type}"><option value="">Keep current &mdash; ${escapeHtml(installed(type))}</option>${options[type].map(option => `<option value="${escapeHtml(option.id)}" data-price="${escapeHtml(option.price || 0)}">${escapeHtml(option.label)}${Number(option.price || 0) ? ` (+${escapeHtml(formatPrice(option.price))})` : " (Included)"}</option>`).join("")}</select></label>` : "";
+  const currentRows = [["RAM", installed("ram")], ["HDD", installed("hdd")], ["SSD", installed("ssd")], ["Colour", options.colour.find(option => option.default)?.label || options.colour[0]?.label || "Original"]].filter(([label, value]) => label === "Colour" ? options.colour.length : value !== "Not installed" || options.ram.length || options.hdd.length || options.ssd.length);
+  return `<section class="product-configurator" data-product-configurator><h2>Customize Your Configuration</h2><div class="configurator-current"><h3>Your current configuration</h3><dl class="configurator-current__list">${currentRows.map(([label, value]) => `<dt>${label}</dt><dd data-configurator-value="${label.toLowerCase()}">${escapeHtml(value)}</dd>`).join("")}</dl></div><p class="configurator-help">Choose an enabled upgrade below. Your current configuration is always kept at no extra charge.</p><h3 class="configurator-section-title">Upgrade your configuration</h3><div class="configurator-grid">${select("ram", "RAM")}${select("hdd", "HDD")}${select("ssd", "SSD")}${select("combined", "RAM + SSD package")}${select("colour", "Colour")}</div><div class="configurator-summary" data-configurator-summary>Base price: ${escapeHtml(formatPrice(product.price))}</div><button class="button button-secondary button-small" type="button" data-configurator-reset>Reset to default</button></section>`;
 }
 
 function setupProductConfigurator(root, product) {
@@ -360,7 +362,7 @@ function setupProductConfigurator(root, product) {
     else selects.forEach(select => { if (select !== combined) select.disabled = false; });
     const chosen = selects.filter(select => select.value).map(select => ({ type: select.dataset.upgradeSelect, id: select.value, label: select.selectedOptions[0].textContent.replace(/\s*\([^)]*\)$/, ""), price: Number(select.selectedOptions[0].dataset.price || 0) }));
     const extra = chosen.reduce((sum, option) => sum + option.price, 0);
-    const selectedValues = { ram: installed("ram"), hdd: installed("hdd"), ssd: installed("ssd") };
+    const selectedValues = { ram: installed("ram"), hdd: installed("hdd"), ssd: installed("ssd"), colour: options.colour.find(option => option.default)?.label || options.colour[0]?.label || "Original" };
     chosen.forEach(option => {
       const source = (options[option.type] || []).find(entry => entry.id === option.id);
       if (option.type === "combined") {
@@ -376,14 +378,33 @@ function setupProductConfigurator(root, product) {
     });
     const summary = panel.querySelector("[data-configurator-summary]");
     summary.innerHTML = `<strong>Final price: ${escapeHtml(formatPrice(base + extra))}</strong>${chosen.length ? `<span>${chosen.map(option => `${escapeHtml(option.label)} (+${escapeHtml(formatPrice(option.price))})`).join(" &middot; ")}</span>` : "<span>No upgrade selected</span>"}`;
+    const selectedColour = chosen.find(option => option.type === "colour");
+    const colourSource = selectedColour ? options.colour.find(option => option.id === selectedColour.id) : options.colour.find(option => option.default) || options.colour[0];
     const configuration = Object.fromEntries(chosen.map(option => [option.type, option.id]));
+    if (colourSource?.id && !configuration.colour) configuration.colour = colourSource.id;
+    panel.querySelectorAll("[data-colour-option]").forEach(button => button.classList.toggle("is-selected", button.dataset.colourOption === configuration.colour));
+    if (colourSource?.image) {
+      const main = root.querySelector("[data-gallery-main]");
+      if (main) { main.src = colourSource.image; main.alt = `${product.name} - ${colourSource.label}`; }
+    }
+    if (colourSource?.id) selectedValues.colour = colourSource.label || colourSource.id;
+    const colourTarget = panel.querySelector('[data-configurator-value="colour"]');
+    if (colourTarget) colourTarget.textContent = selectedValues.colour;
+    panel.dataset.selectedImage = colourSource?.image || image;
     panel.dataset.configuration = JSON.stringify(configuration);
   };
   selects.forEach(select => select.addEventListener("change", update));
+  panel.querySelectorAll("[data-colour-option]").forEach(button => button.addEventListener("click", () => {
+    const select = panel.querySelector('[data-upgrade-select="colour"]');
+    if (!select) return;
+    select.value = button.dataset.colourOption;
+    panel.querySelectorAll("[data-colour-option]").forEach(item => item.classList.toggle("is-selected", item === button));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  }));
   panel.querySelector("[data-configurator-reset]")?.addEventListener("click", () => { selects.forEach(select => { select.value = ""; select.disabled = false; }); update(); });
   root.querySelectorAll("[data-configured-add], [data-configured-buy]").forEach(button => button.addEventListener("click", () => {
     try {
-      addCartItem({ sku: product.sku, name: product.name, image, configuration: JSON.parse(panel.dataset.configuration || "{}") });
+      addCartItem({ sku: product.sku, name: product.name, image: panel.dataset.selectedImage || image, configuration: JSON.parse(panel.dataset.configuration || "{}") });
       if (button.hasAttribute("data-configured-buy")) window.location.href = "checkout.html";
       else button.textContent = "Added to cart";
     } catch (error) { button.textContent = error.message; }
@@ -546,7 +567,7 @@ function renderPromotions(settings) {
     section.className = "section promo-section";
     section.id = "promo-banners";
     section.setAttribute("aria-labelledby", "promo-title");
-    section.innerHTML = '<div class="container"><div class="section-heading"><p class="eyebrow">Offers</p><h2 id="promo-title">Latest from AIG Technology</h2></div><div class="promo-rail" data-promo-rail></div></div>';
+    section.innerHTML = '<div class="container"><div class="section-heading"><p class="eyebrow">Offers</p><h2 id="promo-title">Best Sellers</h2></div><div class="promo-rail" data-promo-rail></div></div>';
     document.querySelector("#featured-products")?.closest("section")?.before(section);
   }
   const rail = section.querySelector("[data-promo-rail]");

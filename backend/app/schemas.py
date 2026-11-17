@@ -27,6 +27,7 @@ class CheckoutConfiguration(BaseModel):
     hdd: str | None = Field(default=None, max_length=80)
     ssd: str | None = Field(default=None, max_length=80)
     combined: str | None = Field(default=None, max_length=80)
+    colour: str | None = Field(default=None, max_length=80)
 
 
 class CheckoutItem(BaseModel):
@@ -83,7 +84,7 @@ class CatalogSyncRequest(BaseModel):
     published: bool
     image_url: str | None = Field(default=None, max_length=2048)
     specifications: dict[str, str] = Field(default_factory=dict, max_length=30)
-    upgrade_options: dict[str, list[dict[str, object]]] = Field(default_factory=dict, max_length=4)
+    upgrade_options: dict[str, list[dict[str, object]]] = Field(default_factory=dict, max_length=5)
 
 
 class VerifyPaymentRequest(BaseModel):

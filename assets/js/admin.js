@@ -139,13 +139,25 @@ function productFormData(form) {
       ? { id, ram: first, ssd: second, label: `${first} + ${second}`, price: amount, included: row.querySelector('[data-upgrade-field="included"]')?.checked === true, available: row.querySelector('[data-upgrade-field="available"]')?.checked !== false }
       : { id, label: first, price: amount, included: row.querySelector('[data-upgrade-field="included"]')?.checked === true, available: row.querySelector('[data-upgrade-field="available"]')?.checked !== false };
   });
+  const readColourOptions = () => [...form.querySelectorAll('[data-upgrade-editor="colour"] [data-upgrade-row]')].map(row => {
+    const get = name => row.querySelector(`[data-upgrade-field="${name}"]`)?.value.trim() || "";
+    const label = get("label");
+    const price = Number(get("price"));
+    if (!label || !Number.isFinite(price) || price < 0) throw new Error("Complete every colour option or remove it.");
+    const stockValue = get("stock");
+    if (stockValue && (!Number.isInteger(Number(stockValue)) || Number(stockValue) < 0)) throw new Error("Colour stock must be a whole number of zero or more.");
+    const id = get("id") || `colour-${label}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const image = get("image");
+    if (image) { let parsed; try { parsed = new URL(image); } catch { throw new Error("Colour image URLs must use HTTPS."); } if (parsed.protocol !== "https:") throw new Error("Colour image URLs must use HTTPS."); }
+    return { id, label, colour: get("colour") || "#d9e2ec", image, price, ...(stockValue ? { stock: Number(stockValue) } : {}), default: row.querySelector('[data-upgrade-field="default"]')?.checked === true, available: row.querySelector('[data-upgrade-field="available"]')?.checked !== false };
+  });
   const specifications = parseSpecs(value("specifications"));
   [["Processor", "processorSpec"], ["RAM", "ramSpec"], ["HDD", "hddSpec"], ["SSD", "ssdSpec"]].forEach(([label, field]) => { if (value(field)) specifications[label] = value(field); });
   const price = value("price");
   return {
     name: value("name"), slug: value("slug"), brand: value("brand"), model: value("model"),
     category: value("category"), sku: value("sku"), description: value("description"),
-    specifications, upgradeOptions: { ram: readUpgradeOptions("ram"), hdd: readUpgradeOptions("hdd"), ssd: readUpgradeOptions("ssd"), combined: readUpgradeOptions("combined", true) }, condition: value("condition"),
+    specifications, upgradeOptions: { ram: readUpgradeOptions("ram"), hdd: readUpgradeOptions("hdd"), ssd: readUpgradeOptions("ssd"), combined: readUpgradeOptions("combined", true), colour: readColourOptions() }, condition: value("condition"),
     price: price ? Number(price) : null, availability: value("availability"),
     stockQuantity: value("stockQuantity") ? Number(value("stockQuantity")) : null,
     warranty: value("warranty"), images, featured: form.elements.featured.checked,
@@ -159,7 +171,7 @@ function ensureUpgradeFields(form) {
   const panel = document.createElement("div");
   panel.dataset.upgradeFields = "true";
   panel.className = "field full";
-  panel.innerHTML = `<h3>Specifications and hardware upgrades</h3><p><small>Choose the product specifications, then use Add option to create customer-facing upgrade dropdowns. Prices are additional to the base product price.</small></p><div class="form-grid"><div class="field"><label>Processor</label><input name="processorSpec" list="processor-values"><datalist id="processor-values"><option>Intel Core i5 6th Gen</option><option>Intel Core i7 8th Gen</option><option>AMD Ryzen 5</option></datalist></div><div class="field"><label>RAM</label><select name="ramSpec"><option value="">Not specified</option><option>4GB DDR3</option><option>8GB DDR3</option><option>8GB DDR4</option><option>16GB DDR4</option><option>32GB DDR4</option></select></div><div class="field"><label>HDD</label><select name="hddSpec"><option value="">Not specified</option><option>250GB HDD</option><option>320GB HDD</option><option>500GB HDD</option><option>1TB HDD</option><option>2TB HDD</option></select></div><div class="field"><label>SSD</label><select name="ssdSpec"><option value="">Not specified</option><option>128GB SSD</option><option>256GB SSD</option><option>512GB SSD</option><option>1TB SSD</option></select></div></div><div class="upgrade-editor-grid"><div data-upgrade-editor="ram"><h4>RAM upgrade options</h4><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="ram">+ Add RAM option</button></div><div data-upgrade-editor="hdd"><h4>HDD upgrade options</h4><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="hdd">+ Add HDD option</button></div><div data-upgrade-editor="ssd"><h4>SSD upgrade options</h4><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="ssd">+ Add SSD option</button></div><div data-upgrade-editor="combined"><h4>RAM + SSD packages</h4><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="combined">+ Add package</button></div></div>`;
+  panel.innerHTML = `<h3>Specifications and hardware upgrades</h3><p><small>Choose the product specifications, then use Add option to create customer-facing upgrade dropdowns. Prices are additional to the base product price.</small></p><div class="form-grid"><div class="field"><label>Processor</label><input name="processorSpec" list="processor-values"><datalist id="processor-values"><option>Intel Core i5 6th Gen</option><option>Intel Core i7 8th Gen</option><option>AMD Ryzen 5</option></datalist></div><div class="field"><label>RAM</label><select name="ramSpec"><option value="">Not specified</option><option>4GB DDR3</option><option>8GB DDR3</option><option>8GB DDR4</option><option>16GB DDR4</option><option>32GB DDR4</option></select></div><div class="field"><label>HDD</label><select name="hddSpec"><option value="">Not specified</option><option>250GB HDD</option><option>320GB HDD</option><option>500GB HDD</option><option>1TB HDD</option><option>2TB HDD</option></select></div><div class="field"><label>SSD</label><select name="ssdSpec"><option value="">Not specified</option><option>128GB SSD</option><option>256GB SSD</option><option>512GB SSD</option><option>1TB SSD</option></select></div></div><div class="upgrade-editor-grid"><div data-upgrade-editor="ram"><h4>RAM upgrade options</h4><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="ram">+ Add RAM option</button></div><div data-upgrade-editor="hdd"><h4>HDD upgrade options</h4><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="hdd">+ Add HDD option</button></div><div data-upgrade-editor="ssd"><h4>SSD upgrade options</h4><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="ssd">+ Add SSD option</button></div><div data-upgrade-editor="combined"><h4>RAM + SSD packages</h4><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="combined">+ Add package</button></div><div data-upgrade-editor="colour"><h4>Product colour options</h4><p><small>Optional. Upload a separate Cloudinary image for each colour when needed.</small></p><div data-upgrade-rows></div><button class="button button-secondary button-small" type="button" data-add-upgrade="colour">+ Add colour</button></div></div>`;
   form.querySelector("[name=specifications]")?.closest(".field")?.insertAdjacentElement("beforebegin", panel);
   panel.querySelector("h3").textContent = "Default installed specifications";
   panel.querySelector("h3")?.insertAdjacentHTML("afterend", "<p><small>These fields describe what is already installed. They do not add an upgrade charge.</small></p>");
@@ -170,7 +182,8 @@ function ensureUpgradeFields(form) {
     const row = document.createElement("div");
     row.dataset.upgradeRow = "true";
     const options = list => list.map(item => `<option value="${escapeHtml(item)}"${item === data.label ? " selected" : ""}>${escapeHtml(item)}</option>`).join("");
-    row.innerHTML = combined
+    if (type === "colour") row.innerHTML = `<input data-upgrade-field="label" aria-label="Colour name" placeholder="Colour name" value="${escapeHtml(data.label || "")}"><input data-upgrade-field="colour" type="color" aria-label="Colour swatch" value="${escapeHtml(data.colour || "#d9e2ec")}"><input data-upgrade-field="image" placeholder="Cloudinary image URL" value="${escapeHtml(data.image || "")}" maxlength="500"><input type="file" accept="image/jpeg,image/png,image/webp" data-colour-upload title="Upload colour image"><input type="number" min="0" step="0.01" data-upgrade-field="price" value="${escapeHtml(data.price ?? 0)}" placeholder="Extra price"><input type="number" min="0" step="1" data-upgrade-field="stock" value="${escapeHtml(data.stock ?? "")}" placeholder="Stock (optional)"><input type="hidden" data-upgrade-field="id" value="${escapeHtml(data.id || "")}"><label class="upgrade-check"><input type="checkbox" data-upgrade-field="default"${data.default ? " checked" : ""}> Default</label><label class="upgrade-check"><input type="checkbox" data-upgrade-field="available"${data.available !== false ? " checked" : ""}> Available</label><button class="button button-small button-danger" type="button" data-remove-upgrade>Remove</button>`;
+    else row.innerHTML = combined
       ? `<select data-upgrade-field="ram" aria-label="Package RAM"><option value="">RAM</option>${options(choices.ram)}</select><select data-upgrade-field="ssd" aria-label="Package SSD"><option value="">SSD</option>${options(choices.ssd)}</select>`
       : `<select data-upgrade-field="label" aria-label="${type.toUpperCase()} configuration"><option value="">Choose ${type.toUpperCase()}</option>${options(choices[type])}<option value="${escapeHtml(data.label || "")}"${data.label && !choices[type].includes(data.label) ? " selected" : ""}>Custom: ${escapeHtml(data.label || "")}</option></select>`;
     if (combined) { row.querySelector('[data-upgrade-field="ram"]').value = data.ram || ""; row.querySelector('[data-upgrade-field="ssd"]').value = data.ssd || ""; }
@@ -179,6 +192,16 @@ function ensureUpgradeFields(form) {
     panel.querySelector(`[data-upgrade-editor="${type}"] [data-upgrade-rows]`).append(row);
   };
   panel.querySelectorAll("[data-add-upgrade]").forEach(button => button.addEventListener("click", () => addRow(button.dataset.addUpgrade)));
+  panel.addEventListener("change", async event => {
+    const defaultInput = event.target.closest('[data-upgrade-field="default"]');
+    if (defaultInput?.checked) panel.querySelectorAll('[data-upgrade-editor="colour"] [data-upgrade-field="default"]').forEach(input => { if (input !== defaultInput) input.checked = false; });
+    const input = event.target.closest("[data-colour-upload]");
+    if (!input || !input.files?.[0]) return;
+    const row = input.closest("[data-upgrade-row]");
+    try { input.disabled = true; const image = await uploadProductImage(input.files[0]); row.querySelector('[data-upgrade-field="image"]').value = image.url; }
+    catch (error) { statusMessage($("#admin-message"), `Colour image upload failed: ${error.message}`, true); }
+    finally { input.disabled = false; input.value = ""; }
+  });
   panel._addUpgradeRow = addRow;
 }
 
@@ -186,7 +209,7 @@ function fillUpgradeFields(form, product) {
   const specs = product.specifications || {};
   for (const [label, field] of [["Processor", "processorSpec"], ["RAM", "ramSpec"], ["HDD", "hddSpec"], ["SSD", "ssdSpec"]]) if (form.elements[field]) form.elements[field].value = specs[label] || "";
   form.querySelectorAll("[data-upgrade-rows]").forEach(rows => { rows.innerHTML = ""; });
-  for (const type of ["ram", "hdd", "ssd", "combined"]) for (const option of (product.upgradeOptions?.[type] || [])) form.querySelector("[data-upgrade-fields]")._addUpgradeRow(type, option);
+  for (const type of ["ram", "hdd", "ssd", "combined", "colour"]) for (const option of (product.upgradeOptions?.[type] || [])) form.querySelector("[data-upgrade-fields]")._addUpgradeRow(type, option);
 }
 
 function attachCatalogImport() {

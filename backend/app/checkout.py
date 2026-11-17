@@ -111,7 +111,7 @@ def _upgrade_selection(product: Product, item: CheckoutItem) -> dict[str, object
         raise HTTPException(status_code=422, detail=f"Choose either a combined package or individual upgrades for {product.sku}")
     breakdown: list[dict[str, object]] = []
     total = ZERO
-    for key in ("ram", "hdd", "ssd", "combined"):
+    for key in ("ram", "hdd", "ssd", "combined", "colour"):
         option_id = selected.get(key)
         if not option_id:
             continue
@@ -121,6 +121,13 @@ def _upgrade_selection(product: Product, item: CheckoutItem) -> dict[str, object
         option = next((entry for entry in options if isinstance(entry, dict) and str(entry.get("id")) == option_id), None)
         if not option or option.get("available", True) is False:
             raise HTTPException(status_code=409, detail=f"Selected {key.upper()} upgrade is unavailable")
+        if key == "colour" and option.get("stock") is not None:
+            try:
+                colour_stock = int(option["stock"])
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(status_code=500, detail="Product colour stock is invalid") from exc
+            if colour_stock <= 0:
+                raise HTTPException(status_code=409, detail="Selected COLOUR upgrade is out of stock")
         try:
             price = Decimal(str(option.get("price", "0"))).quantize(Decimal("0.01"))
         except Exception as exc:
@@ -129,6 +136,13 @@ def _upgrade_selection(product: Product, item: CheckoutItem) -> dict[str, object
             raise HTTPException(status_code=500, detail="Product upgrade pricing is invalid")
         total += price
         breakdown.append({"type": key, "id": option_id, "label": str(option.get("label", option_id)), "amount": str(price)})
+        if key == "colour":
+            # Persist only colour metadata from the authoritative product record.
+            # The browser submits the option id; image/name/code are never trusted from it.
+            selected["colour_name"] = str(option.get("label", option_id))
+            selected["colour_code"] = str(option.get("colour", ""))
+            if option.get("image"):
+                selected["colour_image"] = str(option["image"])
     return {"configuration": selected, "upgrade_amount": total, "breakdown": breakdown}
 
 

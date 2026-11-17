@@ -153,6 +153,16 @@ class WebsiteCustomer(Base):
     orders = relationship("WebsiteOrder", back_populates="customer")
 
 
+class ProductOrderSequence(Base):
+    """Persistent per-SKU counter for new customer-facing order references."""
+
+    __tablename__ = "product_order_sequences"
+
+    sku = Column(String(120), primary_key=True)
+    last_assigned_order_number = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class WebsiteAddress(Base):
     __tablename__ = "website_addresses"
 
@@ -228,6 +238,8 @@ class WebsiteOrderItem(Base):
     base_unit_price = Column(Numeric(12, 2), nullable=True)
     upgrade_amount = Column(Numeric(12, 2), nullable=False, default=0)
     configuration = Column(JSON, nullable=False, default=dict)
+    product_order_number = Column(Integer, nullable=True)
+    product_order_reference = Column(String(200), unique=True, nullable=True, index=True)
 
     order = relationship("WebsiteOrder", back_populates="items")
 

@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import json
-import secrets
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -17,6 +16,7 @@ from .business_models import (
     InventoryReservation,
     PaymentAttempt,
     Product,
+    ProductOrderSequence,
     WebsiteAddress,
     WebsiteCustomer,
     WebsiteOrder,
@@ -45,15 +45,48 @@ def _order_id_part(value: str, fallback: str, limit: int) -> str:
     return (cleaned[:limit] or fallback)
 
 
-def _new_order_id(database: Session, customer_name: str, items: list[tuple[Product, Inventory, CheckoutItem]]) -> str:
-    name_part = _order_id_part(customer_name.split()[0] if customer_name.strip() else "", "CUS", 3)
-    distinct_skus = {product.sku for product, _, _ in items}
-    sku_part = _order_id_part(next(iter(distinct_skus)) if len(distinct_skus) == 1 else "", "ITEM", 40)
-    for _ in range(30):
-        candidate = f"{name_part}-{sku_part}-{secrets.randbelow(9000) + 1000}"
-        if database.scalar(select(WebsiteOrder.id).where(WebsiteOrder.order_id == candidate)) is None:
-            return candidate
-    raise HTTPException(status_code=503, detail="Could not allocate a unique order reference")
+def _next_product_order_number(database: Session, sku: str) -> int:
+    """Atomically increment the persistent counter for one SKU."""
+    dialect = database.bind.dialect.name if database.bind is not None else ""
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    elif dialect == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert
+    else:
+        raise HTTPException(status_code=503, detail="Unsupported database for order reference allocation")
+    statement = insert(ProductOrderSequence).values(
+        sku=sku,
+        last_assigned_order_number=1,
+    ).on_conflict_do_update(
+        index_elements=[ProductOrderSequence.sku],
+        set_={"last_assigned_order_number": ProductOrderSequence.last_assigned_order_number + 1},
+    ).returning(ProductOrderSequence.last_assigned_order_number)
+    return int(database.execute(statement).scalar_one())
+
+
+def _product_order_reference(customer_name: str, sku: str, number: int) -> str:
+    name_part = _order_id_part(customer_name.split()[0] if customer_name.strip() else "", "CUS", 24)
+    sku_part = _order_id_part(sku, "ITEM", 40)
+    return f"{name_part}-{sku_part}-{number:04d}"
+
+
+def _new_product_order_references(
+    database: Session,
+    customer_name: str,
+    items: list[tuple[Product, Inventory, CheckoutItem]],
+) -> list[str]:
+    references: list[str] = []
+    for product, _, _ in items:
+        sku = _order_id_part(product.sku, "ITEM", 120)
+        while True:
+            number = _next_product_order_number(database, sku)
+            candidate = _product_order_reference(customer_name, sku, number)
+            existing_order = database.scalar(select(WebsiteOrder.id).where(WebsiteOrder.order_id == candidate))
+            existing_item = database.scalar(select(WebsiteOrderItem.id).where(WebsiteOrderItem.product_order_reference == candidate))
+            if existing_order is None and existing_item is None:
+                references.append(candidate)
+                break
+    return references
 
 
 def _normalized_items(items: list[CheckoutItem]) -> list[CheckoutItem]:
@@ -256,7 +289,8 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
     database.add(WebsiteAddress(customer_id=customer.id, **address_columns))
     if payload.billing_address:
         database.add(WebsiteAddress(customer_id=customer.id, is_billing=True, **billing))
-    order_id = _new_order_id(database, payload.customer.full_name, locked)
+    product_references = _new_product_order_references(database, payload.customer.full_name, locked)
+    order_id = product_references[0]
     token = _lookup_token(order_id)
     order = WebsiteOrder(
         order_id=order_id,
@@ -275,7 +309,7 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
     )
     database.add(order)
     database.flush()
-    for product, inventory, item in locked:
+    for (product, inventory, item), product_reference in zip(locked, product_references, strict=True):
         selection = _upgrade_selection(product, item)
         inventory.available_quantity -= item.quantity
         inventory.reserved_quantity += item.quantity
@@ -295,6 +329,8 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
             base_unit_price=product.selling_price,
             upgrade_amount=selection["upgrade_amount"],
             configuration={**selection["configuration"], "breakdown": selection["breakdown"]},
+            product_order_number=int(product_reference.rsplit("-", 1)[1]),
+            product_order_reference=product_reference,
             unit_price=(Decimal(product.selling_price) + selection["upgrade_amount"]).quantize(Decimal("0.01")),
             subtotal=((Decimal(product.selling_price) + selection["upgrade_amount"]) * item.quantity).quantize(Decimal("0.01")),
         ))

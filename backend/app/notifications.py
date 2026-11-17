@@ -57,6 +57,7 @@ def _order_text(order: WebsiteOrder, payment: WebsitePayment) -> tuple[str, str]
     customer = order.customer
     items = "\n".join(
         f"- {item.name} ({item.sku}) x {item.quantity}: INR {item.subtotal}"
+        + (f"; product reference: {item.product_order_reference}" if item.product_order_reference else "")
         + (f"; configuration: {item.configuration}" if item.configuration else "")
         for item in order.items
     )
@@ -82,7 +83,9 @@ def _order_text(order: WebsiteOrder, payment: WebsitePayment) -> tuple[str, str]
         f"Payment status: {payment.status}\n"
     )
     safe_items = "".join(
-        f"<li>{html.escape(item.name)} ({html.escape(item.sku)}) × {item.quantity}: INR {html.escape(str(item.subtotal))}</li>"
+        f"<li>{html.escape(item.name)} ({html.escape(item.sku)}) × {item.quantity}: INR {html.escape(str(item.subtotal))}"
+        + (f"; Product reference: {html.escape(item.product_order_reference)}" if item.product_order_reference else "")
+        + "</li>"
         for item in order.items
     )
     safe_address = html.escape(address_text)

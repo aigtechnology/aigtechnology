@@ -111,7 +111,7 @@ def validate_database() -> None:
             raise RuntimeError("Production validation requires live Razorpay credentials and a webhook secret.")
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-        if revision != "20261117_01":
+        if revision != "20261117_02":
             raise RuntimeError("Database migrations are not at the expected Alembic revision.")
         return
     with engine.connect():
@@ -225,6 +225,8 @@ def _serialize_website_order(order: WebsiteOrder) -> dict[str, object]:
         "delivery_charge": str(order.delivery_charge),
         "items": [
             {"name": item.name, "sku": item.sku, "quantity": item.quantity,
+             "product_order_number": item.product_order_number,
+             "product_order_reference": item.product_order_reference,
              "base_unit_price": str(item.base_unit_price or item.unit_price),
              "upgrade_amount": str(item.upgrade_amount or 0),
              "configuration": item.configuration or {},
@@ -262,6 +264,8 @@ def _serialize_website_order_admin_detail(order: WebsiteOrder) -> dict[str, obje
         "billing_address": order.billing_address,
         "items": [
             {"name": item.name, "sku": item.sku, "quantity": item.quantity,
+             "product_order_number": item.product_order_number,
+             "product_order_reference": item.product_order_reference,
              "base_unit_price": str(item.base_unit_price or item.unit_price),
              "upgrade_amount": str(item.upgrade_amount or 0),
              "configuration": item.configuration or {},
@@ -492,6 +496,7 @@ def _purchase_record_from_online(order: WebsiteOrder) -> dict[str, object]:
             "quantity": item.quantity,
             "warranty_months": 0,
             "invoice_amount": str(item.subtotal),
+            "product_order_reference": item.product_order_reference,
             "warranty_status": "Verification Required",
         } for item in order.items],
     }
@@ -1185,7 +1190,10 @@ async def dispatch_website_order(
 ) -> dict[str, object]:
     order = database.scalar(
         select(WebsiteOrder)
-        .options(joinedload(WebsiteOrder.customer), selectinload(WebsiteOrder.payments))
+        # Keep the row lock limited to website_orders.  joinedload() adds a
+        # LEFT OUTER JOIN for the nullable customer_id, and PostgreSQL rejects
+        # FOR UPDATE when it would also lock the nullable side of that join.
+        .options(selectinload(WebsiteOrder.customer), selectinload(WebsiteOrder.payments))
         .where(WebsiteOrder.order_id == order_id)
         .with_for_update()
     )

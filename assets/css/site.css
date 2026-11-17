@@ -155,6 +155,12 @@ p { margin: 0 0 16px; }
 .product-configurator { margin: 22px 0; padding: 18px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--background-secondary); }
 .product-configurator h2 { margin: 0 0 6px; font-size: 1.25rem; }
 .configurator-help { margin: 0 0 14px; color: var(--text-secondary); font-size: .92rem; }
+.configurator-current { margin: 14px 0 18px; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: #fff; }
+.configurator-current h3, .configurator-section-title { margin: 0 0 8px; font-size: 1rem; color: var(--brand-navy); }
+.configurator-current__list { display: grid; grid-template-columns: 90px 1fr; gap: 4px 12px; margin: 0; font-size: .92rem; }
+.configurator-current__list dt { color: var(--text-muted); font-weight: 700; }
+.configurator-current__list dd { margin: 0; font-weight: 600; }
+.upgrade-section-heading { margin: 20px 0 10px; padding-top: 14px; border-top: 1px solid var(--border-color); color: var(--brand-navy); }
 .configurator-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .configurator-field { display: grid; gap: 5px; font-weight: 700; font-size: .9rem; }
 .configurator-field select { width: 100%; }

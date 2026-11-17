@@ -339,25 +339,43 @@ function productConfigurator(product) {
   if (!canPurchaseProduct(product) || !Object.values(options).some(list => list.length)) return "";
   const specs = product.specifications && typeof product.specifications === "object" ? product.specifications : {};
   const installed = type => Object.entries(specs).find(([key]) => key.toLowerCase() === type)?.[1] || "Not installed";
-  const select = (type, label) => options[type].length ? `<label class="configurator-field"><span>${label}</span><select data-upgrade-select="${type}"><option value="">Keep current — ${escapeHtml(installed(type))}</option>${options[type].map(option => `<option value="${escapeHtml(option.id)}" data-price="${escapeHtml(option.price || 0)}">${escapeHtml(option.label)}${Number(option.price || 0) ? ` (+${escapeHtml(formatPrice(option.price))})` : " (Included)"}</option>`).join("")}</select></label>` : "";
+  const select = (type, label) => options[type].length ? `<label class="configurator-field"><span>${label}</span><select data-upgrade-select="${type}"><option value="">Keep current &mdash; ${escapeHtml(installed(type))}</option>${options[type].map(option => `<option value="${escapeHtml(option.id)}" data-price="${escapeHtml(option.price || 0)}">${escapeHtml(option.label)}${Number(option.price || 0) ? ` (+${escapeHtml(formatPrice(option.price))})` : " (Included)"}</option>`).join("")}</select></label>` : "";
   const currentRows = [["RAM", installed("ram")], ["HDD", installed("hdd")], ["SSD", installed("ssd")]].filter(([, value]) => value !== "Not installed" || options.ram.length || options.hdd.length || options.ssd.length);
-  return `<section class="product-configurator" data-product-configurator><h2>Customize Your Configuration</h2><div class="configurator-current"><h3>Your current configuration</h3><dl class="configurator-current__list">${currentRows.map(([label, value]) => `<dt>${label}</dt><dd>${escapeHtml(value)}</dd>`).join("")}</dl></div><p class="configurator-help">Choose an enabled upgrade below. Your current configuration is always kept at no extra charge.</p><h3 class="configurator-section-title">Upgrade your configuration</h3><div class="configurator-grid">${select("ram", "RAM")}${select("hdd", "HDD")}${select("ssd", "SSD")}${select("combined", "RAM + SSD package")}</div><div class="configurator-summary" data-configurator-summary>Base price: ${escapeHtml(formatPrice(product.price))}</div><button class="button button-secondary button-small" type="button" data-configurator-reset>Reset to default</button></section>`;
+  return `<section class="product-configurator" data-product-configurator><h2>Customize Your Configuration</h2><div class="configurator-current"><h3>Your current configuration</h3><dl class="configurator-current__list">${currentRows.map(([label, value]) => `<dt>${label}</dt><dd data-configurator-value="${label.toLowerCase()}">${escapeHtml(value)}</dd>`).join("")}</dl></div><p class="configurator-help">Choose an enabled upgrade below. Your current configuration is always kept at no extra charge.</p><h3 class="configurator-section-title">Upgrade your configuration</h3><div class="configurator-grid">${select("ram", "RAM")}${select("hdd", "HDD")}${select("ssd", "SSD")}${select("combined", "RAM + SSD package")}</div><div class="configurator-summary" data-configurator-summary>Base price: ${escapeHtml(formatPrice(product.price))}</div><button class="button button-secondary button-small" type="button" data-configurator-reset>Reset to default</button></section>`;
 }
 
 function setupProductConfigurator(root, product) {
   const panel = root.querySelector("[data-product-configurator]");
   if (!panel) return;
+  const options = upgradeOptions(product);
   const selects = [...panel.querySelectorAll("[data-upgrade-select]")];
   const base = Number(product.price || 0);
   const image = Array.isArray(product.images) ? product.images[0]?.url || product.images[0] : "";
+  const specs = product.specifications && typeof product.specifications === "object" ? product.specifications : {};
+  const installed = type => Object.entries(specs).find(([key]) => key.toLowerCase() === type)?.[1] || "Not installed";
+  const configuredLabel = option => option?.label || option?.id || "Not installed";
   const update = () => {
     const combined = selects.find(select => select.dataset.upgradeSelect === "combined");
     if (combined?.value) selects.filter(select => select !== combined).forEach(select => { select.value = ""; select.disabled = true; });
     else selects.forEach(select => { if (select !== combined) select.disabled = false; });
     const chosen = selects.filter(select => select.value).map(select => ({ type: select.dataset.upgradeSelect, id: select.value, label: select.selectedOptions[0].textContent.replace(/\s*\([^)]*\)$/, ""), price: Number(select.selectedOptions[0].dataset.price || 0) }));
     const extra = chosen.reduce((sum, option) => sum + option.price, 0);
+    const selectedValues = { ram: installed("ram"), hdd: installed("hdd"), ssd: installed("ssd") };
+    chosen.forEach(option => {
+      const source = (options[option.type] || []).find(entry => entry.id === option.id);
+      if (option.type === "combined") {
+        if (source?.ram) selectedValues.ram = source.ram;
+        if (source?.ssd) selectedValues.ssd = source.ssd;
+      } else if (option.type in selectedValues) {
+        selectedValues[option.type] = configuredLabel(source);
+      }
+    });
+    Object.entries(selectedValues).forEach(([type, value]) => {
+      const target = panel.querySelector(`[data-configurator-value="${type}"]`);
+      if (target) target.textContent = value;
+    });
     const summary = panel.querySelector("[data-configurator-summary]");
-    summary.innerHTML = `<strong>Final price: ${escapeHtml(formatPrice(base + extra))}</strong>${chosen.length ? `<span>${chosen.map(option => `${escapeHtml(option.label)} (+${escapeHtml(formatPrice(option.price))})`).join(" · ")}</span>` : "<span>No upgrade selected</span>"}`;
+    summary.innerHTML = `<strong>Final price: ${escapeHtml(formatPrice(base + extra))}</strong>${chosen.length ? `<span>${chosen.map(option => `${escapeHtml(option.label)} (+${escapeHtml(formatPrice(option.price))})`).join(" &middot; ")}</span>` : "<span>No upgrade selected</span>"}`;
     const configuration = Object.fromEntries(chosen.map(option => [option.type, option.id]));
     panel.dataset.configuration = JSON.stringify(configuration);
   };

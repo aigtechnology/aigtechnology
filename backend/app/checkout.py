@@ -31,6 +31,15 @@ ZERO = Decimal("0.00")
 RESERVATION_LIFETIME = timedelta(minutes=20)
 
 
+def _normalize_mobile(value: str) -> str:
+    digits = "".join(character for character in str(value) if character.isdigit())
+    if len(digits) == 12 and digits.startswith("91"):
+        return digits[2:]
+    if len(digits) == 11 and digits.startswith("0"):
+        return digits[1:]
+    return digits
+
+
 def _order_id_part(value: str, fallback: str, limit: int) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9]", "", value or "").upper()
     return (cleaned[:limit] or fallback)
@@ -213,13 +222,28 @@ def create_website_order(database: Session, payload: CreateOrderRequest, idempot
         ((Decimal(product.selling_price) + _upgrade_selection(product, item)["upgrade_amount"]) * item.quantity for product, _, item in locked),
         start=ZERO,
     ).quantize(Decimal("0.01"))
-    customer = WebsiteCustomer(
-        full_name=payload.customer.full_name,
-        email=payload.customer.email,
-        phone=payload.customer.phone,
-    )
-    database.add(customer)
-    database.flush()
+    normalized_phone = _normalize_mobile(payload.customer.phone)
+    customer = database.scalars(
+        select(WebsiteCustomer)
+        .where(WebsiteCustomer.normalized_phone == normalized_phone)
+        .order_by(WebsiteCustomer.id)
+        .limit(1)
+        .with_for_update()
+    ).first()
+    if customer is None:
+        customer = WebsiteCustomer(
+            full_name=payload.customer.full_name,
+            email=payload.customer.email,
+            phone=payload.customer.phone,
+            normalized_phone=normalized_phone,
+        )
+        database.add(customer)
+        database.flush()
+    else:
+        if not customer.full_name.strip():
+            customer.full_name = payload.customer.full_name
+        if not customer.email.strip():
+            customer.email = payload.customer.email
 
     shipping = payload.address.model_dump()
     shipping["state"] = str(delivery["state"])

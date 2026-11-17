@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -111,7 +112,17 @@ class RefundRequest(BaseModel):
 class FulfillmentUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: Literal["Processing", "Packed", "Shipped", "Out for Delivery", "Delivered"]
+    status: Literal["Order Placed", "Confirmed", "Processing", "Packed", "Shipped", "In Transit", "Out for Delivery", "Delivered", "Delivery Failed", "Returned", "Cancelled"]
+
+
+class DispatchNotificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    carrier: str | None = Field(default=None, max_length=120)
+    tracking_number: str = Field(min_length=2, max_length=160)
+    tracking_url: str | None = Field(default=None, max_length=2048)
+    actual_dispatch_date: datetime | None = None
+    estimated_delivery_date: datetime | None = None
 
 
 class DispatchSettingsUpdate(BaseModel):

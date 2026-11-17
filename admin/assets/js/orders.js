@@ -69,7 +69,9 @@ async function loadOrderDetail(orderId) {
     ]);
     const address = order.shipping_address || {};
     const chargeSummary = `<div class="price-breakdown"><div><span>Product subtotal</span><strong>₹ ${escapeHtml(order.subtotal || "0.00")}</strong></div><div><span>Packaging &amp; delivery</span><strong>₹ ${escapeHtml(order.delivery_charge || "0.00")}</strong></div><div><span>Final payable</span><strong>₹ ${escapeHtml(order.total_amount || "0.00")}</strong></div></div>`;
-    const nextStatus = { Confirmed: "Processing", Processing: "Packed", Packed: "Shipped", Shipped: "Out for Delivery", "Out for Delivery": "Delivered" }[order.status];
+    const statuses = ["Order Placed", "Confirmed", "Processing", "Packed", "Shipped", "In Transit", "Out for Delivery", "Delivered", "Delivery Failed", "Returned", "Cancelled"];
+    const nextStatus = order.status;
+    const statusOptions = statuses.map(status => `<option value="${escapeHtml(status)}" ${status === order.status ? "selected" : ""}>${escapeHtml(status)}</option>`).join("");
     const canRefund = ["Captured", "Partially Refunded"].includes(order.payment_status);
     const canReconcile = order.payment_method === "razorpay" && order.payment_id && ["Pending", "Authorized"].includes(order.payment_status);
     detail.innerHTML = `<h2>Website order ${escapeHtml(order.order_id)}</h2><p><strong>Customer:</strong> ${escapeHtml(order.customer)} · ${escapeHtml(order.customer_email)} · ${escapeHtml(order.customer_phone)}</p><p><strong>Payment:</strong> ${escapeHtml(order.payment_status)} · ${escapeHtml(order.payment_method || "—")} · ${escapeHtml(order.payment_reference || "—")}</p><p><strong>Delivery:</strong> ${escapeHtml(address.line1)} ${escapeHtml(address.line2 || "")}, ${escapeHtml(address.city)}, ${escapeHtml(address.state)} ${escapeHtml(address.postal_code)}</p>${canReconcile ? `<button class="button secondary" id="reconcile-payment" type="button">Reconcile with Razorpay</button>` : ""}${nextStatus && ["Captured", "Partially Refunded", "Refunded"].includes(order.payment_status) ? `<form id="fulfillment-form" class="filter-bar"><label>Fulfilment status<select name="status"><option value="${escapeHtml(nextStatus)}">${escapeHtml(nextStatus)}</option></select></label><button class="button" type="submit">Update status</button></form>` : ""}${canRefund ? `<button class="button secondary" id="issue-refund" type="button">Issue refund</button>` : ""}<p id="order-action-status" role="status"></p><h3>Products</h3><div class="table-wrap"><table><thead><tr><th>Product / SKU</th><th>Quantity</th><th>Unit price</th><th>Subtotal</th></tr></thead><tbody>${order.items.map(item => `<tr><td>${escapeHtml(item.name)}<br><small>${escapeHtml(item.sku)}</small></td><td>${escapeHtml(item.quantity)}</td><td>₹ ${escapeHtml(item.unit_price)}</td><td>₹ ${escapeHtml(item.subtotal)}</td></tr>`).join("")}</tbody></table></div><h3>Payment and refund history</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>Status</th><th>Reference</th><th>Amount</th><th>Date</th></tr></thead><tbody>${transactions.map(item => `<tr><td>${escapeHtml(item.type)}</td><td>${escapeHtml(item.status)}</td><td>${escapeHtml(item.provider_reference || "—")}</td><td>${escapeHtml(item.amount || "—")}</td><td>${escapeHtml(item.created_at ? new Date(item.created_at).toLocaleString() : "—")}</td></tr>`).join("") || `<tr><td colspan="5">No payment events yet.</td></tr>`}</tbody></table></div>`;
@@ -77,6 +79,32 @@ async function loadOrderDetail(orderId) {
     detail.insertAdjacentHTML("afterbegin", `<div class="parcel-label" aria-label="Parcel label"><div class="parcel-label__pincode">PIN CODE: ${escapeHtml(address.postal_code || "")}</div><div class="parcel-label__name">${escapeHtml(order.customer || "")}</div><div class="parcel-label__address">${escapeHtml(address.line1 || "")}${address.line2 ? `<br>${escapeHtml(address.line2)}` : ""}<br>${escapeHtml(address.city || "")}, ${escapeHtml(address.state || "")}</div></div><div class="panel"><p><strong>Customer:</strong> ${escapeHtml(order.customer)} · ${escapeHtml(order.customer_email)} · ${escapeHtml(order.customer_phone)}</p><p><strong>Address:</strong> ${escapeHtml(address.line1)} ${escapeHtml(address.line2 || "")}, ${escapeHtml(address.city)}, ${escapeHtml(address.state)} ${escapeHtml(address.postal_code)}</p><p><a class="button secondary" href="tel:${escapeHtml(order.customer_phone)}">Call customer</a> <a class="button secondary" href="https://wa.me/91${escapeHtml(order.customer_phone)}" target="_blank" rel="noopener noreferrer">WhatsApp</a> <button class="button secondary" id="print-order" type="button">Print parcel label</button></p><h3>Status history</h3><ul>${(order.status_history || []).map(item => `<li>${escapeHtml(item.new_status)} — ${escapeHtml(item.created_at ? new Date(item.created_at).toLocaleString() : "")}</li>`).join("") || "<li>No status history.</li>"}</ul></div>`);
     detail.insertAdjacentHTML("afterbegin", `<div class="panel"><p><strong>Detected delivery state:</strong> ${escapeHtml(address.delivery_state || address.state || "—")} · <strong>PIN:</strong> ${escapeHtml(address.postal_code || "—")}</p>${chargeSummary}</div>`);
     detail.querySelector("#print-order")?.addEventListener("click", () => printParcelLabel(order.order_id));
+    detail.insertAdjacentHTML("afterbegin", `<div class="panel dispatch-panel"><h3>Dispatch notification</h3><p><strong>Expected dispatch date:</strong> ${escapeHtml(order.dispatch_date || "To be confirmed")}</p><form id="dispatch-form" class="filter-bar"><label>Carrier <input name="carrier" maxlength="120" value="${escapeHtml(order.carrier || "")}" placeholder="Courier name"></label><label>Tracking ID <input name="tracking_number" maxlength="160" required value="${escapeHtml(order.tracking_number || "")}" placeholder="Tracking number"></label><button class="button" type="submit">Save tracking &amp; send dispatch email</button></form><p id="dispatch-action-status" role="status"></p></div>`);
+    const fulfillmentSelect = detail.querySelector("#fulfillment-form select");
+    if (fulfillmentSelect) fulfillmentSelect.insertAdjacentHTML("beforeend", statusOptions);
+    const dispatchForm = detail.querySelector("#dispatch-form");
+    if (dispatchForm && !dispatchForm.elements.tracking_url) {
+      dispatchForm.insertAdjacentHTML("afterbegin", `<label>Estimated delivery <input name="estimated_delivery_date" type="date" value="${escapeHtml((order.estimated_delivery_date || "").slice(0, 10))}"></label><label>Tracking URL <input name="tracking_url" type="url" maxlength="2048" value="${escapeHtml(order.tracking_url || "")}" placeholder="https://courier.example/track"></label>`);
+    }
+    detail.querySelector("#dispatch-form")?.addEventListener("submit", async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const button = form.querySelector("button");
+      const message = detail.querySelector("#dispatch-action-status");
+      button.disabled = true;
+      try {
+        const result = await apiRequest(`/admin/orders/${encodeURIComponent(order.order_id)}/dispatch`, {
+          method: "POST",
+          body: JSON.stringify({ carrier: form.elements.carrier.value.trim() || null, tracking_number: form.elements.tracking_number.value.trim(), tracking_url: form.elements.tracking_url?.value.trim() || null, estimated_delivery_date: form.elements.estimated_delivery_date?.value ? `${form.elements.estimated_delivery_date.value}T00:00:00` : null })
+        });
+        message.textContent = result.email_sent ? "Tracking saved and dispatch email sent." : "Tracking saved, but the dispatch email was not sent. Check Mailjet configuration.";
+        await load();
+        await loadOrderDetail(order.order_id);
+      } catch (error) {
+        message.textContent = error.message;
+        button.disabled = false;
+      }
+    });
     const actionStatus = detail.querySelector("#order-action-status");
     detail.querySelector("#reconcile-payment")?.addEventListener("click", async event => {
       const button = event.currentTarget;

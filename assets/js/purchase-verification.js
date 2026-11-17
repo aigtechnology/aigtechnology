@@ -13,6 +13,7 @@ export async function verifyPurchase({ invoiceNumber, mobile }) {
   if (!API_BASE_URL) throw new Error("The API address is not configured for this site.");
   const response = await fetch(`${API_BASE_URL}/customer/verify-purchase`, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       invoice_type: null,

@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import logging
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -32,6 +33,7 @@ from .database import Base, engine, get_db
 from .firebase_auth import require_firebase_admin
 from .models import AdminSession, AdminUser
 from .business_models import (
+    CustomerSession,
     FlipkartOrder,
     Inventory,
     PaymentAttempt,
@@ -53,7 +55,7 @@ from .payment_providers import (
     verify_razorpay_payment_signature,
     verify_razorpay_webhook_signature,
 )
-from .notifications import get_dispatch_working_days, send_order_emails, set_dispatch_working_days
+from .notifications import get_dispatch_date, get_dispatch_working_days, send_dispatch_email, send_order_emails, set_dispatch_working_days
 from .sync import check_flipkart_connection
 from .schemas import (
     CatalogSyncRequest,
@@ -65,6 +67,7 @@ from .schemas import (
     RefundRequest,
     SessionResponse,
     DispatchSettingsUpdate,
+    DispatchNotificationRequest,
     UserResponse,
     VerifyPaymentRequest,
     PurchaseVerificationRequest,
@@ -108,7 +111,7 @@ def validate_database() -> None:
             raise RuntimeError("Production validation requires live Razorpay credentials and a webhook secret.")
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-        if revision != "20261116_05":
+        if revision != "20261117_01":
             raise RuntimeError("Database migrations are not at the expected Alembic revision.")
         return
     with engine.connect():
@@ -199,6 +202,12 @@ def _serialize_website_order(order: WebsiteOrder) -> dict[str, object]:
         "order_id": order.order_id,
         "source": "website",
         "order_date": order.created_at,
+        "dispatch_date": get_dispatch_date(order.created_at),
+        "actual_dispatch_date": order.actual_dispatch_date,
+        "estimated_delivery_date": order.estimated_delivery_date,
+        "carrier": order.carrier,
+        "tracking_number": order.tracking_number,
+        "tracking_url": order.tracking_url,
         "customer": customer.full_name,
         "customer_email": customer.email,
         "customer_phone": customer.phone,
@@ -232,6 +241,12 @@ def _serialize_website_order_admin_detail(order: WebsiteOrder) -> dict[str, obje
         "order_id": order.order_id,
         "source": "website",
         "order_date": order.created_at,
+        "dispatch_date": get_dispatch_date(order.created_at),
+        "actual_dispatch_date": order.actual_dispatch_date,
+        "estimated_delivery_date": order.estimated_delivery_date,
+        "carrier": order.carrier,
+        "tracking_number": order.tracking_number,
+        "tracking_url": order.tracking_url,
         "customer": customer.full_name,
         "customer_email": customer.email,
         "customer_phone": customer.phone,
@@ -379,6 +394,42 @@ def _normalize_mobile(value: str) -> str:
     return digits
 
 
+CUSTOMER_SESSION_COOKIE = "aig_customer_session"
+CUSTOMER_SESSION_LIFETIME = timedelta(days=30)
+
+
+def _customer_session_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _customer_session(database: Session, token: str | None) -> CustomerSession:
+    if not token:
+        raise HTTPException(status_code=401, detail="Customer verification is required")
+    session = database.scalar(select(CustomerSession).where(CustomerSession.token_hash == _customer_session_hash(token)))
+    if session is None or session.revoked_at is not None or session.expires_at <= datetime.now(UTC):
+        raise HTTPException(status_code=401, detail="Customer session has expired")
+    return session
+
+
+def _issue_customer_session(database: Session, customer_id: int | None, normalized_phone: str, response: Response) -> None:
+    token = secrets.token_urlsafe(32)
+    database.add(CustomerSession(
+        token_hash=_customer_session_hash(token),
+        customer_id=customer_id,
+        normalized_phone=normalized_phone,
+        expires_at=datetime.now(UTC) + CUSTOMER_SESSION_LIFETIME,
+    ))
+    response.set_cookie(
+        CUSTOMER_SESSION_COOKIE,
+        token,
+        max_age=int(CUSTOMER_SESSION_LIFETIME.total_seconds()),
+        httponly=True,
+        secure=settings.app_env == "production",
+        samesite="lax",
+        path="/",
+    )
+
+
 def _warranty_status(purchase_date: datetime, warranty_months: int) -> tuple[str, str | None]:
     if not warranty_months or warranty_months <= 0:
         return "Warranty Not Available", None
@@ -422,6 +473,14 @@ def _purchase_record_from_online(order: WebsiteOrder) -> dict[str, object]:
         "mobile": order.customer.phone,
         "email": order.customer.email,
         "purchase_date": order.created_at.isoformat(),
+        "order_status": order.status,
+        "payment_status": order.payment_status,
+        "dispatch_date": get_dispatch_date(order.created_at),
+        "actual_dispatch_date": order.actual_dispatch_date.isoformat() if order.actual_dispatch_date else None,
+        "estimated_delivery_date": order.estimated_delivery_date.isoformat() if order.estimated_delivery_date else None,
+        "carrier": order.carrier,
+        "tracking_number": order.tracking_number,
+        "tracking_url": order.tracking_url,
         "warranty_status": "Verification Required",
         "warranty_expiry": None,
         "service_eligibility": "Eligible" if order.payment_status == "Captured" else "Payment not captured",
@@ -454,7 +513,7 @@ def _find_verified_purchases(database: Session, payload: PurchaseVerificationReq
             select(WebsiteOrder)
             .join(WebsiteCustomer, WebsiteOrder.customer_id == WebsiteCustomer.id)
             .options(joinedload(WebsiteOrder.customer), selectinload(WebsiteOrder.items))
-            .where(WebsiteCustomer.phone == mobile, WebsiteOrder.order_id == payload.invoice_number)
+            .where(WebsiteCustomer.normalized_phone == mobile, WebsiteOrder.order_id == payload.invoice_number)
         )
         if order and order.payment_status == "Captured":
             records.append(_purchase_record_from_online(order))
@@ -466,13 +525,68 @@ def _find_verified_purchases(database: Session, payload: PurchaseVerificationReq
 def verify_customer_purchase(
     request: Request,
     payload: PurchaseVerificationRequest,
+    response: Response,
     database: Session = Depends(get_db),
 ) -> dict[str, object]:
     records = _find_verified_purchases(database, payload)
     if not records:
         raise HTTPException(status_code=404, detail="No verified purchase was found for that mobile number and reference.")
+    mobile = _normalize_mobile(payload.mobile)
+    customer = database.scalar(select(WebsiteCustomer).where(WebsiteCustomer.normalized_phone == mobile).order_by(WebsiteCustomer.id).limit(1))
+    online_order = database.scalar(
+        select(WebsiteOrder)
+        .join(WebsiteCustomer, WebsiteOrder.customer_id == WebsiteCustomer.id)
+        .where(WebsiteCustomer.normalized_phone == mobile, WebsiteOrder.order_id == payload.invoice_number)
+    )
+    _issue_customer_session(database, online_order.customer_id if online_order else (customer.id if customer else None), mobile, response)
+    database.commit()
     first = records[0]
-    return {**first, "verified": True, "purchases": records}
+    return {**first, "verified": True, "account_authenticated": True, "verified_mobile": mobile, "purchases": records}
+
+
+@app.get("/api/customer/account", tags=["customer service"])
+def customer_account(
+    customer_session: str | None = Cookie(default=None, alias=CUSTOMER_SESSION_COOKIE),
+    database: Session = Depends(get_db),
+) -> dict[str, object]:
+    session = _customer_session(database, customer_session)
+    orders = database.scalars(
+        select(WebsiteOrder)
+        .join(WebsiteCustomer, WebsiteOrder.customer_id == WebsiteCustomer.id)
+        .options(joinedload(WebsiteOrder.customer), selectinload(WebsiteOrder.items), selectinload(WebsiteOrder.payments))
+        .where(
+            WebsiteCustomer.normalized_phone == session.normalized_phone,
+            WebsiteOrder.payment_status.in_(["Captured", "Partially Refunded", "Refunded"]),
+        )
+        .order_by(WebsiteOrder.created_at.desc())
+    ).all()
+    offline = database.scalars(select(OfflinePurchase).where(OfflinePurchase.mobile == session.normalized_phone).order_by(OfflinePurchase.purchase_date.desc())).all()
+    customer = session.customer or (orders[0].customer if orders else None)
+    profile = (
+        {"full_name": customer.full_name, "phone": customer.phone, "email": customer.email}
+        if customer else
+        {"full_name": offline[0].customer_name if offline else "Verified customer", "phone": session.normalized_phone, "email": offline[0].email if offline else None}
+    )
+    return {
+        "customer": profile,
+        "verified_mobile": session.normalized_phone,
+        "orders": [_serialize_website_order(order) for order in orders],
+        "offline_purchases": [_purchase_record_from_offline(item) for item in offline],
+    }
+
+
+@app.post("/api/customer/logout", status_code=204, tags=["customer service"])
+def customer_logout(
+    response: Response,
+    customer_session: str | None = Cookie(default=None, alias=CUSTOMER_SESSION_COOKIE),
+    database: Session = Depends(get_db),
+) -> None:
+    if customer_session:
+        session = database.scalar(select(CustomerSession).where(CustomerSession.token_hash == _customer_session_hash(customer_session)))
+        if session:
+            session.revoked_at = datetime.now(UTC)
+            database.commit()
+    response.delete_cookie(CUSTOMER_SESSION_COOKIE, path="/")
 
 
 @app.post("/api/service-requests", tags=["customer service"])
@@ -1045,11 +1159,13 @@ def update_website_order_status(
     if order is None:
         raise HTTPException(status_code=404, detail="Website order not found")
     allowed = {
-        "Confirmed": {"Processing"},
-        "Processing": {"Packed"},
-        "Packed": {"Shipped"},
-        "Shipped": {"Out for Delivery"},
-        "Out for Delivery": {"Delivered"},
+        "Order Placed": {"Confirmed", "Processing", "Cancelled"}, "Confirmed": {"Processing", "Cancelled"},
+        "Processing": {"Packed", "Cancelled"}, "Packed": {"Shipped", "Cancelled"},
+        "Shipped": {"In Transit", "Out for Delivery", "Delivery Failed", "Returned"},
+        "In Transit": {"Out for Delivery", "Delivery Failed", "Returned"},
+        "Out for Delivery": {"Delivered", "Delivery Failed", "Returned"},
+        "Delivered": {"Returned"}, "Delivery Failed": {"In Transit", "Returned", "Cancelled"},
+        "Returned": set(), "Cancelled": set(),
     }
     if payload.status != order.status and payload.status not in allowed.get(order.status, set()):
         raise HTTPException(status_code=409, detail=f"Cannot move order from {order.status} to {payload.status}")
@@ -1058,6 +1174,48 @@ def update_website_order_status(
     order.status = payload.status
     database.commit()
     return {"order_id": order.order_id, "status": order.status}
+
+
+@app.post("/api/admin/orders/{order_id}/dispatch", tags=["orders"])
+async def dispatch_website_order(
+    order_id: str,
+    payload: DispatchNotificationRequest,
+    user: AdminUser = Depends(require_admin),
+    database: Session = Depends(get_db),
+) -> dict[str, object]:
+    order = database.scalar(
+        select(WebsiteOrder)
+        .options(joinedload(WebsiteOrder.customer), selectinload(WebsiteOrder.payments))
+        .where(WebsiteOrder.order_id == order_id)
+        .with_for_update()
+    )
+    if order is None:
+        raise HTTPException(status_code=404, detail="Website order not found")
+    if order.payment_status not in {"Captured", "Partially Refunded"}:
+        raise HTTPException(status_code=409, detail="Dispatch updates require a captured payment")
+    order.carrier = payload.carrier.strip() if payload.carrier else None
+    order.tracking_number = payload.tracking_number.strip()
+    if payload.tracking_url and not payload.tracking_url.startswith(("https://", "http://")):
+        raise HTTPException(status_code=422, detail="Tracking URL must start with http:// or https://")
+    order.tracking_url = payload.tracking_url.strip() if payload.tracking_url else None
+    order.actual_dispatch_date = payload.actual_dispatch_date or datetime.now(UTC)
+    order.estimated_delivery_date = payload.estimated_delivery_date
+    if order.status in {"Confirmed", "Processing", "Packed"}:
+        order.status = "Shipped"
+    database.commit()
+    dispatch_date = get_dispatch_date(order.created_at)
+    email_sent = await send_dispatch_email(order, dispatch_date)
+    return {
+        "order_id": order.order_id,
+        "status": order.status,
+        "dispatch_date": dispatch_date,
+        "carrier": order.carrier,
+        "tracking_number": order.tracking_number,
+        "tracking_url": order.tracking_url,
+        "actual_dispatch_date": order.actual_dispatch_date,
+        "estimated_delivery_date": order.estimated_delivery_date,
+        "email_sent": email_sent,
+    }
 
 
 @app.post("/api/auth/login", tags=["auth"])

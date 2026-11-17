@@ -39,6 +39,11 @@ def _dispatch_date(order_date: datetime | date | None, working_days: int | None 
     return current.strftime("%d %b %Y")
 
 
+def get_dispatch_date(order_date: datetime | date | None) -> str:
+    """Return the customer-facing dispatch date using the configured setting."""
+    return _dispatch_date(order_date)
+
+
 def _configured() -> bool:
     return bool(
         settings.mailjet_api_key
@@ -153,3 +158,39 @@ async def send_order_emails(order: WebsiteOrder, payment: WebsitePayment) -> boo
         for recipient in recipients
     ]
     return await send_mailjet_messages(messages)
+
+
+async def send_dispatch_email(order: WebsiteOrder, dispatch_date: str) -> bool:
+    """Send the dispatch notification after an admin records shipment details."""
+    if not _configured() or not order.customer.email:
+        logger.warning("Dispatch email skipped: required configuration or customer email is missing for order_id=%s", order.order_id)
+        return False
+    address = order.shipping_address or {}
+    carrier = order.carrier or "Courier provider"
+    tracking_number = order.tracking_number or "Not provided"
+    text = (
+        f"Your AIG TECHNOLOGY order {order.order_id} has been dispatched.\n\n"
+        f"Customer: {order.customer.full_name}\n"
+        f"Expected dispatch date: {dispatch_date}\n"
+        f"Carrier: {carrier}\n"
+        f"Tracking ID: {tracking_number}\n"
+        "Please use the tracking ID with the carrier for the latest shipment updates.\n\n"
+        "Thank you for choosing AIG TECHNOLOGY."
+    )
+    safe_address = html.escape(", ".join(str(address.get(key, "")) for key in ("line1", "line2", "city", "state", "postal_code") if address.get(key)))
+    html_body = f"""<!doctype html><html><body style=\"font-family:Arial,sans-serif;color:#102a43\">
+<h2 style=\"color:#1769aa\">AIG TECHNOLOGY</h2><h3>Your order has been dispatched</h3>
+<p><strong>Order ID:</strong> {html.escape(order.order_id)}<br>
+<strong>Customer:</strong> {html.escape(order.customer.full_name)}<br>
+<strong>Expected dispatch date:</strong> {html.escape(dispatch_date)}<br>
+<strong>Carrier:</strong> {html.escape(carrier)}<br><strong>Tracking ID:</strong> {html.escape(tracking_number)}</p>
+<p>Please use the tracking ID with the carrier for the latest shipment updates.</p>
+<p><strong>Delivery address:</strong><br>{safe_address}</p>
+<p>Thank you for choosing AIG TECHNOLOGY.</p></body></html>"""
+    return await send_mailjet_messages([{
+        "From": {"Email": settings.notification_from_email, "Name": settings.notification_from_name},
+        "To": [{"Email": order.customer.email, "Name": order.customer.full_name}],
+        "Subject": f"AIG TECHNOLOGY dispatch update - {order.order_id}",
+        "TextPart": text,
+        "HTMLPart": html_body,
+    }])

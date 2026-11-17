@@ -145,6 +145,7 @@ class WebsiteCustomer(Base):
     id = Column(Integer, primary_key=True)
     full_name = Column(String(120), nullable=False)
     phone = Column(String(20), nullable=False, index=True)
+    normalized_phone = Column(String(10), nullable=False, index=True)
     email = Column(String(254), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -183,6 +184,11 @@ class WebsiteOrder(Base):
     delivery_charge = Column(Numeric(12, 2), nullable=False, default=0)
     discount = Column(Numeric(12, 2), nullable=False, default=0)
     total_amount = Column(Numeric(12, 2), nullable=False)
+    carrier = Column(String(120))
+    tracking_number = Column(String(160))
+    tracking_url = Column(String(2048))
+    actual_dispatch_date = Column(DateTime(timezone=True))
+    estimated_delivery_date = Column(DateTime(timezone=False))
     shipping_address = Column(JSON, nullable=False)
     billing_address = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -192,6 +198,20 @@ class WebsiteOrder(Base):
     items = relationship("WebsiteOrderItem", back_populates="order", cascade="all, delete-orphan")
     payments = relationship("WebsitePayment", back_populates="order", cascade="all, delete-orphan")
     reservations = relationship("InventoryReservation", back_populates="order", cascade="all, delete-orphan")
+
+
+class CustomerSession(Base):
+    __tablename__ = "customer_sessions"
+
+    id = Column(Integer, primary_key=True)
+    token_hash = Column(String(64), unique=True, index=True, nullable=False)
+    customer_id = Column(ForeignKey("website_customers.id", ondelete="SET NULL"), index=True)
+    normalized_phone = Column(String(10), nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), index=True, nullable=False)
+    revoked_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    customer = relationship("WebsiteCustomer")
 
 
 class WebsiteOrderItem(Base):

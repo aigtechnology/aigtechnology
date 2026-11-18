@@ -46,6 +46,8 @@ from .business_models import (
     WebsiteRefund,
     OfflinePurchase,
     ServiceRequest,
+    DeliveryChargeRule,
+    InventoryMovement,
 )
 from .payment_providers import (
     create_razorpay_order,
@@ -74,6 +76,9 @@ from .schemas import (
     ServiceRequestCreate,
     ServiceRequestUpdate,
     FirebaseCustomerSessionRequest,
+    DeliveryChargeRuleInput,
+    InventoryAdjustmentRequest,
+    InventoryThresholdRequest,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -112,7 +117,7 @@ def validate_database() -> None:
             raise RuntimeError("Production validation requires live Razorpay credentials and a webhook secret.")
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-        if revision != "20261117_03":
+        if revision != "20261118_01":
             raise RuntimeError("Database migrations are not at the expected Alembic revision.")
         return
     with engine.connect():
@@ -321,6 +326,7 @@ def sync_catalog_product(
             sku=payload.sku,
             catalog_id=payload.catalog_id,
             name=payload.name,
+            category=payload.category,
             selling_price=synced_price,
             is_active=payable,
             image_url=payload.image_url,
@@ -337,6 +343,7 @@ def sync_catalog_product(
             product.sku = payload.sku
         product.catalog_id = payload.catalog_id
         product.name = payload.name
+        product.category = payload.category
         product.selling_price = synced_price
         product.is_active = payable
         product.image_url = payload.image_url
@@ -1342,8 +1349,26 @@ def session_status(
 @app.get("/api/dashboard/summary", tags=["dashboard"])
 def dashboard_summary(
     user: AdminUser = Depends(require_admin),
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
     database: Session = Depends(get_db),
-) -> dict[str, str | int]:
+) -> dict[str, object]:
+    now = datetime.now(UTC)
+    start = date_from or datetime(now.year, now.month, now.day, tzinfo=UTC) - timedelta(days=29)
+    end = date_to or now
+    paid_filter = WebsiteOrder.payment_status.in_(["Captured", "Partially Refunded"])
+    date_filter = WebsiteOrder.created_at >= start, WebsiteOrder.created_at <= end
+    paid_orders = database.scalars(select(WebsiteOrder).where(paid_filter, *date_filter)).all()
+    successful_revenue = sum((Decimal(order.total_amount) for order in paid_orders), start=Decimal("0.00"))
+    refunded_amount = database.scalar(select(func.coalesce(func.sum(WebsiteRefund.amount), 0)).join(WebsitePayment).where(WebsiteRefund.status == "Processed", WebsiteRefund.created_at >= start, WebsiteRefund.created_at <= end)) or 0
+    status_counts = {status_name: database.scalar(select(func.count(WebsiteOrder.id)).where(WebsiteOrder.status == status_name, *date_filter)) or 0 for status_name in ["Pending Payment", "Confirmed", "Processing", "Packed", "Shipped", "In Transit", "Out for Delivery", "Delivered", "Cancelled"]}
+    total_products = database.scalar(select(func.count(Product.id)).where(Product.is_active.is_(True))) or 0
+    inventory_rows = database.execute(select(Product, Inventory).join(Inventory, Inventory.product_id == Product.id, isouter=True).where(Product.is_active.is_(True))).all()
+    total_stock = sum((int(row[1].available_quantity) for row in inventory_rows if row[1]), start=0)
+    low_stock = sum(1 for product, inventory in inventory_rows if inventory and 0 < inventory.available_quantity <= product.low_stock_threshold)
+    out_of_stock = sum(1 for product, inventory in inventory_rows if not inventory or inventory.available_quantity <= 0)
+    customers = database.scalar(select(func.count(WebsiteCustomer.id))) or 0
+    new_customers = database.scalar(select(func.count(WebsiteCustomer.id)).where(WebsiteCustomer.created_at >= start, WebsiteCustomer.created_at <= end)) or 0
     flipkart_order_count = database.scalar(select(func.count(FlipkartOrder.id))) or 0
     website_order_count = database.scalar(select(func.count(WebsiteOrder.id))) or 0
     pending_count = database.scalar(
@@ -1359,12 +1384,95 @@ def dashboard_summary(
         select(func.coalesce(func.sum(WebsiteOrder.total_amount), 0)).where(WebsiteOrder.payment_status == "Captured")
     ) or 0
     return {
+        "range": {"from": start, "to": end},
         "orders": flipkart_order_count + website_order_count,
+        "orders_in_range": len(paid_orders) + (database.scalar(select(func.count(FlipkartOrder.id)).where(FlipkartOrder.order_date >= start, FlipkartOrder.order_date <= end)) or 0),
         "pending_orders": pending_count + flipkart_pending_count,
-        "revenue": str(flipkart_revenue + website_revenue),
+        "revenue": str(successful_revenue),
+        "refunded_amount": str(Decimal(refunded_amount)),
+        "net_revenue": str(successful_revenue - Decimal(refunded_amount)),
         "profit": "0.00",
+        "today_sales": str(sum((Decimal(order.total_amount) for order in paid_orders if order.created_at and order.created_at.date() == now.date()), start=Decimal("0.00"))),
+        "monthly_sales": str(successful_revenue),
+        "successful_payments": len(paid_orders),
+        "failed_payments": database.scalar(select(func.count(WebsiteOrder.id)).where(WebsiteOrder.payment_status == "Failed", *date_filter)) or 0,
+        "pending_payments": database.scalar(select(func.count(WebsiteOrder.id)).where(WebsiteOrder.payment_status.in_(["Created", "Pending"]), *date_filter)) or 0,
+        "status_counts": status_counts,
+        "products": {"total": total_products, "low_stock": low_stock, "out_of_stock": out_of_stock, "available_stock": total_stock},
+        "customers": {"total": customers, "new": new_customers},
         "message": f"Authenticated as {user.username}",
     }
+
+
+@app.get("/api/admin/delivery-charges", tags=["settings"])
+def list_delivery_charge_rules(user: AdminUser = Depends(require_admin), database: Session = Depends(get_db)) -> list[dict[str, object]]:
+    return [{"category": rule.category, "charge_amount": str(rule.charge_amount), "charge_type": rule.charge_type, "free_delivery": rule.free_delivery, "free_delivery_minimum": str(rule.free_delivery_minimum) if rule.free_delivery_minimum is not None else None, "enabled": rule.enabled} for rule in database.scalars(select(DeliveryChargeRule).order_by(DeliveryChargeRule.category)).all()]
+
+
+@app.put("/api/admin/delivery-charges", tags=["settings"])
+def save_delivery_charge_rule(payload: DeliveryChargeRuleInput, user: AdminUser = Depends(require_admin), database: Session = Depends(get_db)) -> dict[str, object]:
+    category = payload.category.strip()
+    rule = database.scalar(select(DeliveryChargeRule).where(func.lower(DeliveryChargeRule.category) == category.casefold()).with_for_update())
+    if rule is None:
+        rule = DeliveryChargeRule(category=category)
+        database.add(rule)
+    rule.charge_amount = payload.charge_amount.quantize(Decimal("0.01"))
+    rule.charge_type = payload.charge_type
+    rule.free_delivery = payload.free_delivery
+    rule.free_delivery_minimum = payload.free_delivery_minimum
+    rule.enabled = payload.enabled
+    database.commit()
+    return {"saved": True, "category": rule.category}
+
+
+@app.delete("/api/admin/delivery-charges/{category}", status_code=204, tags=["settings"])
+def delete_delivery_charge_rule(category: str, user: AdminUser = Depends(require_admin), database: Session = Depends(get_db)) -> None:
+    rule = database.scalar(select(DeliveryChargeRule).where(DeliveryChargeRule.category == category).with_for_update())
+    if rule:
+        database.delete(rule)
+        database.commit()
+
+
+@app.get("/api/admin/inventory", tags=["inventory"])
+def inventory_dashboard(user: AdminUser = Depends(require_admin), database: Session = Depends(get_db)) -> dict[str, object]:
+    rows = database.execute(select(Product, Inventory).join(Inventory, Inventory.product_id == Product.id, isouter=True).where(Product.is_active.is_(True)).order_by(Product.name)).all()
+    products = [{"sku": product.sku, "name": product.name, "category": product.category, "available_quantity": inventory.available_quantity if inventory else 0, "reserved_quantity": inventory.reserved_quantity if inventory else 0, "low_stock_threshold": product.low_stock_threshold, "status": "out_of_stock" if not inventory or inventory.available_quantity <= 0 else "low_stock" if inventory.available_quantity <= product.low_stock_threshold else "in_stock"} for product, inventory in rows]
+    return {"products": products, "summary": {"total_products": len(products), "available_stock": sum(item["available_quantity"] for item in products), "low_stock": sum(item["status"] == "low_stock" for item in products), "out_of_stock": sum(item["status"] == "out_of_stock" for item in products)}}
+
+
+@app.post("/api/admin/inventory/adjust", tags=["inventory"])
+def adjust_inventory(payload: InventoryAdjustmentRequest, user: AdminUser = Depends(require_admin), database: Session = Depends(get_db)) -> dict[str, object]:
+    product = database.scalar(select(Product).where(Product.sku == payload.sku, Product.is_active.is_(True)).with_for_update())
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    inventory = database.scalar(select(Inventory).where(Inventory.product_id == product.id).with_for_update())
+    if inventory is None:
+        inventory = Inventory(product_id=product.id, available_quantity=0, reserved_quantity=0)
+        database.add(inventory)
+        database.flush()
+    previous = inventory.available_quantity
+    if payload.action == "remove" and payload.quantity > inventory.available_quantity:
+        raise HTTPException(status_code=409, detail="Cannot remove more stock than available")
+    inventory.available_quantity += payload.quantity if payload.action == "add" else -payload.quantity
+    database.add(InventoryMovement(product_id=product.id, movement_type="manual_add" if payload.action == "add" else "manual_remove", quantity=payload.quantity if payload.action == "add" else -payload.quantity, reference=f"admin:{user.username}", notes=f"{payload.reason}: {payload.notes or ''} (previous={previous}, new={inventory.available_quantity})"))
+    database.commit()
+    return {"sku": product.sku, "previous_quantity": previous, "new_quantity": inventory.available_quantity}
+
+
+@app.patch("/api/admin/inventory/threshold", tags=["inventory"])
+def update_inventory_threshold(payload: InventoryThresholdRequest, user: AdminUser = Depends(require_admin), database: Session = Depends(get_db)) -> dict[str, object]:
+    product = database.scalar(select(Product).where(Product.sku == payload.sku, Product.is_active.is_(True)).with_for_update())
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    product.low_stock_threshold = payload.low_stock_threshold
+    database.commit()
+    return {"sku": product.sku, "low_stock_threshold": product.low_stock_threshold}
+
+
+@app.get("/api/admin/inventory/movements", tags=["inventory"])
+def inventory_movements(user: AdminUser = Depends(require_admin), limit: int = Query(default=100, ge=1, le=500), database: Session = Depends(get_db)) -> list[dict[str, object]]:
+    rows = database.scalars(select(InventoryMovement).options(joinedload(InventoryMovement.product)).order_by(InventoryMovement.created_at.desc()).limit(limit)).all()
+    return [{"sku": row.product.sku if row.product else None, "product_name": row.product.name if row.product else None, "movement_type": row.movement_type, "quantity": row.quantity, "reference": row.reference, "notes": row.notes, "created_at": row.created_at} for row in rows]
 
 
 @app.get("/api/admin/dispatch-settings", tags=["settings"])

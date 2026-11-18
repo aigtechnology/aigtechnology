@@ -100,6 +100,7 @@ class Product(Base):
     sku = Column(String(120), unique=True, nullable=False, index=True)
     catalog_id = Column(String(160), unique=True, index=True)
     name = Column(String(255), nullable=False)
+    category = Column(String(80), index=True)
     selling_price = Column(Numeric(12, 2), default=0, nullable=False)
     cost_price = Column(Numeric(12, 2), default=0, nullable=False)
     low_stock_threshold = Column(Integer, default=5, nullable=False)
@@ -301,9 +302,25 @@ class InventoryReservation(Base):
     quantity = Column(Integer, nullable=False)
     status = Column(String(20), nullable=False, default="reserved", index=True)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    upgrade_stock_reservation = Column(JSON, nullable=False, default=dict)
+    upgrade_stock_released = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     order = relationship("WebsiteOrder", back_populates="reservations")
+
+
+class DeliveryChargeRule(Base):
+    __tablename__ = "delivery_charge_rules"
+
+    id = Column(Integer, primary_key=True)
+    category = Column(String(80), unique=True, nullable=False, index=True)
+    charge_amount = Column(Numeric(12, 2), nullable=False, default=0)
+    charge_type = Column(String(20), nullable=False, default="fixed")
+    free_delivery = Column(Boolean, nullable=False, default=False)
+    free_delivery_minimum = Column(Numeric(12, 2))
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 class WebsiteRefund(Base):

@@ -79,12 +79,41 @@ class CatalogSyncRequest(BaseModel):
     catalog_id: str = Field(min_length=1, max_length=160)
     sku: str = Field(default="", max_length=120)
     name: str = Field(min_length=1, max_length=255)
+    category: str | None = Field(default=None, max_length=80)
     price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     stock_quantity: int | None = Field(default=None, ge=0, le=100000)
     published: bool
     image_url: str | None = Field(default=None, max_length=2048)
     specifications: dict[str, str] = Field(default_factory=dict, max_length=30)
     upgrade_options: dict[str, list[dict[str, object]]] = Field(default_factory=dict, max_length=5)
+
+
+class DeliveryChargeRuleInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: str = Field(min_length=1, max_length=80)
+    charge_amount: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
+    charge_type: Literal["fixed", "per_item"] = "fixed"
+    free_delivery: bool = False
+    free_delivery_minimum: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    enabled: bool = True
+
+
+class InventoryAdjustmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sku: str = Field(min_length=1, max_length=120)
+    quantity: int = Field(gt=0, le=100000)
+    action: Literal["add", "remove"]
+    reason: str = Field(min_length=2, max_length=80)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class InventoryThresholdRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sku: str = Field(min_length=1, max_length=120)
+    low_stock_threshold: int = Field(ge=0, le=100000)
 
 
 class VerifyPaymentRequest(BaseModel):

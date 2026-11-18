@@ -18,7 +18,7 @@ export function navigation(active = "dashboard") {
     <div class="admin-nav-section">Management</div>
     ${item("analytics", "Business Analytics", icons.analytics, "analytics.html")}
     ${item("notifications", "Notifications", icons.bell, "notifications.html")}
-    ${item("settings", "Settings", icons.settings, "settings.html")}
+    ${item("settings", "Settings", icons.settings, "operations-settings.html")}
     <div class="admin-nav-section">Website</div>
     ${item("online-orders", "Online Razorpay Orders", icons.finance, "online-orders.html")}
     ${item("purchases", "Offline Purchases", icons.purchases, "purchases.html")}

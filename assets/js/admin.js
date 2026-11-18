@@ -135,9 +135,12 @@ function productFormData(form) {
     const second = combined ? get("ssd") : "";
     if (!first || (combined && !second) || !Number.isFinite(amount) || amount < 0) throw new Error(`Complete every ${combined ? "package" : type.toUpperCase()} upgrade row or remove it.`);
     const id = get("id") || `${type}-${first}-${second}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const stockValue = get("stock");
+    if (stockValue && (!Number.isInteger(Number(stockValue)) || Number(stockValue) < 0)) throw new Error(`${type.toUpperCase()} stock must be a whole number of zero or more.`);
+    const stock = stockValue ? { stock: Number(stockValue) } : {};
     return combined
-      ? { id, ram: first, ssd: second, label: `${first} + ${second}`, price: amount, included: row.querySelector('[data-upgrade-field="included"]')?.checked === true, available: row.querySelector('[data-upgrade-field="available"]')?.checked !== false }
-      : { id, label: first, price: amount, included: row.querySelector('[data-upgrade-field="included"]')?.checked === true, available: row.querySelector('[data-upgrade-field="available"]')?.checked !== false };
+      ? { id, ram: first, ssd: second, label: `${first} + ${second}`, price: amount, ...stock, included: row.querySelector('[data-upgrade-field="included"]')?.checked === true, available: row.querySelector('[data-upgrade-field="available"]')?.checked !== false }
+      : { id, label: first, price: amount, ...stock, included: row.querySelector('[data-upgrade-field="included"]')?.checked === true, available: row.querySelector('[data-upgrade-field="available"]')?.checked !== false };
   });
   const readColourOptions = () => [...form.querySelectorAll('[data-upgrade-editor="colour"] [data-upgrade-row]')].map(row => {
     const get = name => row.querySelector(`[data-upgrade-field="${name}"]`)?.value.trim() || "";
@@ -177,6 +180,7 @@ function ensureUpgradeFields(form) {
   panel.querySelector("h3")?.insertAdjacentHTML("afterend", "<p><small>These fields describe what is already installed. They do not add an upgrade charge.</small></p>");
   panel.querySelector(".upgrade-editor-grid")?.insertAdjacentHTML("beforebegin", "<h3 class=\"upgrade-section-heading\">Customer upgrade options</h3>");
   const choices = { ram: ["4GB DDR3", "8GB DDR3", "8GB DDR4", "16GB DDR4", "32GB DDR4"], hdd: ["250GB HDD", "320GB HDD", "500GB HDD", "1TB HDD", "2TB HDD"], ssd: ["128GB SSD", "256GB SSD", "512GB SSD", "1TB SSD"] };
+  panel.insertAdjacentHTML("beforeend", Object.entries(choices).map(([type, values]) => `<datalist id="upgrade-${type}-values">${values.map(value => `<option value="${escapeHtml(value)}">`).join("")}</datalist>`).join(""));
   const addRow = (type, data = {}) => {
     const combined = type === "combined";
     const row = document.createElement("div");
@@ -184,10 +188,11 @@ function ensureUpgradeFields(form) {
     const options = list => list.map(item => `<option value="${escapeHtml(item)}"${item === data.label ? " selected" : ""}>${escapeHtml(item)}</option>`).join("");
     if (type === "colour") row.innerHTML = `<input data-upgrade-field="label" aria-label="Colour name" placeholder="Colour name" value="${escapeHtml(data.label || "")}"><input data-upgrade-field="colour" type="color" aria-label="Colour swatch" value="${escapeHtml(data.colour || "#d9e2ec")}"><input data-upgrade-field="image" placeholder="Cloudinary image URL" value="${escapeHtml(data.image || "")}" maxlength="500"><input type="file" accept="image/jpeg,image/png,image/webp" data-colour-upload title="Upload colour image"><input type="number" min="0" step="0.01" data-upgrade-field="price" value="${escapeHtml(data.price ?? 0)}" placeholder="Extra price"><input type="number" min="0" step="1" data-upgrade-field="stock" value="${escapeHtml(data.stock ?? "")}" placeholder="Stock (optional)"><input type="hidden" data-upgrade-field="id" value="${escapeHtml(data.id || "")}"><label class="upgrade-check"><input type="checkbox" data-upgrade-field="default"${data.default ? " checked" : ""}> Default</label><label class="upgrade-check"><input type="checkbox" data-upgrade-field="available"${data.available !== false ? " checked" : ""}> Available</label><button class="button button-small button-danger" type="button" data-remove-upgrade>Remove</button>`;
     else row.innerHTML = combined
-      ? `<select data-upgrade-field="ram" aria-label="Package RAM"><option value="">RAM</option>${options(choices.ram)}</select><select data-upgrade-field="ssd" aria-label="Package SSD"><option value="">SSD</option>${options(choices.ssd)}</select>`
-      : `<select data-upgrade-field="label" aria-label="${type.toUpperCase()} configuration"><option value="">Choose ${type.toUpperCase()}</option>${options(choices[type])}<option value="${escapeHtml(data.label || "")}"${data.label && !choices[type].includes(data.label) ? " selected" : ""}>Custom: ${escapeHtml(data.label || "")}</option></select>`;
+      ? `<input data-upgrade-field="ram" list="upgrade-ram-values" aria-label="Package RAM" placeholder="RAM configuration" value="${escapeHtml(data.ram || "")}"><input data-upgrade-field="ssd" list="upgrade-ssd-values" aria-label="Package SSD" placeholder="SSD configuration" value="${escapeHtml(data.ssd || "")}">`
+      : `<input data-upgrade-field="label" list="upgrade-${type}-values" aria-label="${type.toUpperCase()} configuration" placeholder="Enter or select ${type.toUpperCase()} configuration" value="${escapeHtml(data.label || "")}">`;
     if (combined) { row.querySelector('[data-upgrade-field="ram"]').value = data.ram || ""; row.querySelector('[data-upgrade-field="ssd"]').value = data.ssd || ""; }
     row.insertAdjacentHTML("beforeend", `<input type="hidden" data-upgrade-field="id" value="${escapeHtml(data.id || "")}"><input type="number" min="0" step="0.01" data-upgrade-field="price" value="${escapeHtml(data.price ?? 0)}" placeholder="Extra price (₹)"><label class="upgrade-check"><input type="checkbox" data-upgrade-field="included"${data.included ? " checked" : ""}> Included</label><label class="upgrade-check"><input type="checkbox" data-upgrade-field="available"${data.available !== false ? " checked" : ""}> Available</label><button class="button button-small button-danger" type="button" data-remove-upgrade>Remove</button>`);
+    if (type !== "colour") row.querySelector('[data-upgrade-field="price"]')?.insertAdjacentHTML("afterend", `<input type="number" min="0" step="1" data-upgrade-field="stock" value="${escapeHtml(data.stock ?? "")}" placeholder="Stock (optional)">`);
     row.querySelector("[data-remove-upgrade]").addEventListener("click", () => row.remove());
     panel.querySelector(`[data-upgrade-editor="${type}"] [data-upgrade-rows]`).append(row);
   };

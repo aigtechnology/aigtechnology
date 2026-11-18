@@ -27,6 +27,7 @@ export function saveCatalogProduct(catalogId, product, idToken) {
       catalog_id: catalogId,
       sku: product.sku || "",
       name: product.name,
+      category: product.category || null,
       price: product.price,
       stock_quantity: product.stockQuantity,
       published: product.published,

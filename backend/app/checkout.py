@@ -3,16 +3,19 @@ import hmac
 import json
 import re
 import uuid
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from .business_models import (
     Inventory,
+    InventoryMovement,
     InventoryReservation,
     PaymentAttempt,
     Product,
@@ -22,6 +25,7 @@ from .business_models import (
     WebsiteOrder,
     WebsiteOrderItem,
     WebsitePayment,
+    DeliveryChargeRule,
 )
 from .config import settings
 from .delivery import lookup_pincode
@@ -106,10 +110,11 @@ def _upgrade_selection(product: Product, item: CheckoutItem) -> dict[str, object
     selected = item.configuration.model_dump(exclude_none=True) if item.configuration else {}
     available = product.upgrade_options if isinstance(product.upgrade_options, dict) else {}
     if not selected:
-        return {"configuration": {}, "upgrade_amount": ZERO, "breakdown": []}
+        return {"configuration": {}, "upgrade_amount": ZERO, "breakdown": [], "stock_reservations": []}
     if selected.get("combined") and any(selected.get(key) for key in ("ram", "hdd", "ssd")):
         raise HTTPException(status_code=422, detail=f"Choose either a combined package or individual upgrades for {product.sku}")
     breakdown: list[dict[str, object]] = []
+    stock_reservations: list[dict[str, object]] = []
     total = ZERO
     for key in ("ram", "hdd", "ssd", "combined", "colour"):
         option_id = selected.get(key)
@@ -128,6 +133,14 @@ def _upgrade_selection(product: Product, item: CheckoutItem) -> dict[str, object
                 raise HTTPException(status_code=500, detail="Product colour stock is invalid") from exc
             if colour_stock <= 0:
                 raise HTTPException(status_code=409, detail="Selected COLOUR upgrade is out of stock")
+        if option.get("stock") is not None:
+            try:
+                option_stock = int(option["stock"])
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(status_code=500, detail=f"Product {key.upper()} stock is invalid") from exc
+            if option_stock < item.quantity:
+                raise HTTPException(status_code=409, detail=f"Selected {key.upper()} upgrade has insufficient stock")
+            stock_reservations.append({"type": key, "id": option_id, "quantity": item.quantity})
         try:
             price = Decimal(str(option.get("price", "0"))).quantize(Decimal("0.01"))
         except Exception as exc:
@@ -143,7 +156,83 @@ def _upgrade_selection(product: Product, item: CheckoutItem) -> dict[str, object
             selected["colour_code"] = str(option.get("colour", ""))
             if option.get("image"):
                 selected["colour_image"] = str(option["image"])
-    return {"configuration": selected, "upgrade_amount": total, "breakdown": breakdown}
+    return {
+        "configuration": selected,
+        "upgrade_amount": total,
+        "breakdown": breakdown,
+        "stock_reservations": stock_reservations,
+    }
+
+
+def _delivery_for_items(
+    database: Session,
+    products: list[tuple[Product, Inventory, CheckoutItem]],
+    postal_code: str | None,
+) -> tuple[dict[str, object] | None, Decimal, list[dict[str, object]]]:
+    if not postal_code:
+        return None, ZERO, []
+    location = lookup_pincode(postal_code)
+    categories = {str(product.category or "").strip() for product, _, _ in products if str(product.category or "").strip()}
+    rules = {
+        rule.category.casefold(): rule
+        for rule in database.scalars(
+            select(DeliveryChargeRule).where(DeliveryChargeRule.enabled.is_(True), func.lower(DeliveryChargeRule.category).in_([c.casefold() for c in categories]))
+        ).all()
+    } if categories else {}
+    breakdown: list[dict[str, object]] = []
+    total = ZERO
+    for category in sorted(categories):
+        rule = rules.get(category.casefold())
+        if rule is None:
+            continue
+        category_items = [(product, item) for product, _, item in products if str(product.category or "").casefold() == category.casefold()]
+        category_subtotal = sum(
+            ((Decimal(product.selling_price) + _upgrade_selection(product, item)["upgrade_amount"]) * item.quantity for product, item in category_items),
+            start=ZERO,
+        )
+        charge = ZERO if rule.free_delivery and (rule.free_delivery_minimum is None or category_subtotal >= rule.free_delivery_minimum) else Decimal(rule.charge_amount)
+        if rule.charge_type == "per_item":
+            charge *= sum(item.quantity for _, item in category_items)
+        charge = charge.quantize(Decimal("0.01"))
+        total += charge
+        breakdown.append({"category": rule.category, "charge": str(charge), "charge_type": rule.charge_type})
+    if not breakdown:
+        total = Decimal(str(location["delivery_charge"])).quantize(Decimal("0.01"))
+        breakdown = [{"category": "Default PIN-based delivery", "charge": str(total), "charge_type": "fixed"}]
+    return location, total.quantize(Decimal("0.01")), breakdown
+
+
+def _decrement_upgrade_stock(product: Product, stock_reservations: list[dict[str, object]]) -> None:
+    if not stock_reservations:
+        return
+    options = deepcopy(product.upgrade_options if isinstance(product.upgrade_options, dict) else {})
+    for reservation in stock_reservations:
+        key = str(reservation["type"])
+        option_id = str(reservation["id"])
+        quantity = int(reservation["quantity"])
+        entries = options.get(key, [])
+        option = next((entry for entry in entries if isinstance(entry, dict) and str(entry.get("id")) == option_id), None)
+        if option is None or option.get("stock") is None:
+            continue
+        stock = int(option.get("stock", 0))
+        if stock < quantity:
+            raise HTTPException(status_code=409, detail=f"Selected {key.upper()} upgrade is out of stock")
+        option["stock"] = stock - quantity
+    product.upgrade_options = options
+    flag_modified(product, "upgrade_options")
+
+
+def _restore_upgrade_stock(product: Product, stock_reservations: list[dict[str, object]]) -> None:
+    if not stock_reservations:
+        return
+    options = deepcopy(product.upgrade_options if isinstance(product.upgrade_options, dict) else {})
+    for reservation in stock_reservations:
+        entries = options.get(str(reservation["type"]), [])
+        option = next((entry for entry in entries if isinstance(entry, dict) and str(entry.get("id")) == str(reservation["id"])), None)
+        if option is not None and option.get("stock") is not None:
+            option["stock"] = int(option.get("stock", 0)) + int(reservation["quantity"])
+    product.upgrade_options = options
+    flag_modified(product, "upgrade_options")
 
 
 def _locked_products(database: Session, items: list[CheckoutItem]) -> list[tuple[Product, Inventory, CheckoutItem]]:
@@ -217,8 +306,7 @@ def calculate_cart(database: Session, items: list[CheckoutItem], postal_code: st
             "subtotal": str(line_total),
             "available_quantity": inventory.available_quantity,
         })
-    delivery = lookup_pincode(postal_code) if postal_code else None
-    delivery_charge = Decimal(str(delivery["delivery_charge"])) if delivery else ZERO
+    delivery, delivery_charge, delivery_breakdown = _delivery_for_items(database, products, postal_code)
     return {
         "items": lines,
         "subtotal": str(subtotal),
@@ -229,6 +317,7 @@ def calculate_cart(database: Session, items: list[CheckoutItem], postal_code: st
         "delivery_city": delivery["city"] if delivery else None,
         "delivery_verified": bool(delivery),
         "delivery_message": delivery["message"] if delivery else "Enter your PIN code to calculate packaging and delivery.",
+        "delivery_breakdown": delivery_breakdown,
         "currency": "INR",
     }
 
@@ -268,8 +357,7 @@ def create_website_order(
         return _order_created_response(existing, payment)
 
     locked = _locked_products(database, items)
-    delivery = lookup_pincode(payload.address.postal_code)
-    delivery_charge = Decimal(str(delivery["delivery_charge"])).quantize(Decimal("0.01"))
+    delivery, delivery_charge, delivery_breakdown = _delivery_for_items(database, locked, payload.address.postal_code)
     subtotal = sum(
         ((Decimal(product.selling_price) + _upgrade_selection(product, item)["upgrade_amount"]) * item.quantity for product, _, item in locked),
         start=ZERO,
@@ -319,6 +407,7 @@ def create_website_order(
         shipping["city"] = str(delivery["city"])
     shipping["delivery_state"] = str(delivery["state"])
     shipping["delivery_verified"] = True
+    shipping["delivery_charge_breakdown"] = delivery_breakdown
     billing = (payload.billing_address or payload.address).model_dump()
     address_columns = {key: shipping[key] for key in ("line1", "line2", "city", "state", "postal_code", "country") if key in shipping}
     database.add(WebsiteAddress(customer_id=customer.id, **address_columns))
@@ -346,14 +435,23 @@ def create_website_order(
     database.flush()
     for (product, inventory, item), product_reference in zip(locked, product_references, strict=True):
         selection = _upgrade_selection(product, item)
+        _decrement_upgrade_stock(product, selection["stock_reservations"])
         inventory.available_quantity -= item.quantity
         inventory.reserved_quantity += item.quantity
+        database.add(InventoryMovement(
+            product_id=product.id,
+            movement_type="order_reserved",
+            quantity=-item.quantity,
+            reference=order.order_id,
+            notes="Stock reserved for pending website order.",
+        ))
         database.add(InventoryReservation(
             order_id=order.id,
             product_id=product.id,
             quantity=item.quantity,
             status="reserved",
             expires_at=datetime.now(UTC) + RESERVATION_LIFETIME,
+            upgrade_stock_reservation=selection["stock_reservations"],
         ))
         database.add(WebsiteOrderItem(
             order_id=order.id,
@@ -437,6 +535,18 @@ def release_reservations(database: Session, order: WebsiteOrder) -> None:
         if inventory:
             inventory.available_quantity += reservation.quantity
             inventory.reserved_quantity -= reservation.quantity
+            database.add(InventoryMovement(
+                product_id=reservation.product_id,
+                movement_type="order_released",
+                quantity=reservation.quantity,
+                reference=order.order_id,
+                notes="Stock restored after order cancellation or payment expiry.",
+            ))
+        if not reservation.upgrade_stock_released and reservation.upgrade_stock_reservation:
+            product = database.scalar(select(Product).where(Product.id == reservation.product_id).with_for_update())
+            if product:
+                _restore_upgrade_stock(product, reservation.upgrade_stock_reservation)
+            reservation.upgrade_stock_released = True
         reservation.status = "released"
 
 

@@ -92,6 +92,7 @@ class DeliveryChargeRuleInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     category: str = Field(min_length=1, max_length=80)
+    region: Literal["all", "gujarat", "outside_gujarat"] = "all"
     charge_amount: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
     charge_type: Literal["fixed", "per_item"] = "fixed"
     free_delivery: bool = False

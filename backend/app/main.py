@@ -117,7 +117,7 @@ def validate_database() -> None:
             raise RuntimeError("Production validation requires live Razorpay credentials and a webhook secret.")
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-        if revision != "20261118_01":
+        if revision != "20261118_02":
             raise RuntimeError("Database migrations are not at the expected Alembic revision.")
         return
     with engine.connect():
@@ -1406,15 +1406,15 @@ def dashboard_summary(
 
 @app.get("/api/admin/delivery-charges", tags=["settings"])
 def list_delivery_charge_rules(user: AdminUser = Depends(require_admin), database: Session = Depends(get_db)) -> list[dict[str, object]]:
-    return [{"category": rule.category, "charge_amount": str(rule.charge_amount), "charge_type": rule.charge_type, "free_delivery": rule.free_delivery, "free_delivery_minimum": str(rule.free_delivery_minimum) if rule.free_delivery_minimum is not None else None, "enabled": rule.enabled} for rule in database.scalars(select(DeliveryChargeRule).order_by(DeliveryChargeRule.category)).all()]
+    return [{"category": rule.category, "region": rule.region, "charge_amount": str(rule.charge_amount), "charge_type": rule.charge_type, "free_delivery": rule.free_delivery, "free_delivery_minimum": str(rule.free_delivery_minimum) if rule.free_delivery_minimum is not None else None, "enabled": rule.enabled} for rule in database.scalars(select(DeliveryChargeRule).order_by(DeliveryChargeRule.category, DeliveryChargeRule.region)).all()]
 
 
 @app.put("/api/admin/delivery-charges", tags=["settings"])
 def save_delivery_charge_rule(payload: DeliveryChargeRuleInput, user: AdminUser = Depends(require_admin), database: Session = Depends(get_db)) -> dict[str, object]:
     category = payload.category.strip()
-    rule = database.scalar(select(DeliveryChargeRule).where(func.lower(DeliveryChargeRule.category) == category.casefold()).with_for_update())
+    rule = database.scalar(select(DeliveryChargeRule).where(func.lower(DeliveryChargeRule.category) == category.casefold(), DeliveryChargeRule.region == payload.region).with_for_update())
     if rule is None:
-        rule = DeliveryChargeRule(category=category)
+        rule = DeliveryChargeRule(category=category, region=payload.region)
         database.add(rule)
     rule.charge_amount = payload.charge_amount.quantize(Decimal("0.01"))
     rule.charge_type = payload.charge_type
@@ -1422,12 +1422,14 @@ def save_delivery_charge_rule(payload: DeliveryChargeRuleInput, user: AdminUser 
     rule.free_delivery_minimum = payload.free_delivery_minimum
     rule.enabled = payload.enabled
     database.commit()
-    return {"saved": True, "category": rule.category}
+    return {"saved": True, "category": rule.category, "region": rule.region}
 
 
 @app.delete("/api/admin/delivery-charges/{category}", status_code=204, tags=["settings"])
-def delete_delivery_charge_rule(category: str, user: AdminUser = Depends(require_admin), database: Session = Depends(get_db)) -> None:
-    rule = database.scalar(select(DeliveryChargeRule).where(DeliveryChargeRule.category == category).with_for_update())
+def delete_delivery_charge_rule(category: str, region: str = Query(default="all"), user: AdminUser = Depends(require_admin), database: Session = Depends(get_db)) -> None:
+    if region not in {"all", "gujarat", "outside_gujarat"}:
+        raise HTTPException(status_code=422, detail="Invalid delivery rule region")
+    rule = database.scalar(select(DeliveryChargeRule).where(DeliveryChargeRule.category == category, DeliveryChargeRule.region == region).with_for_update())
     if rule:
         database.delete(rule)
         database.commit()

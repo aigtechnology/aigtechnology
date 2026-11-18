@@ -173,12 +173,19 @@ def _delivery_for_items(
         return None, ZERO, []
     location = lookup_pincode(postal_code)
     categories = {str(product.category or "").strip() for product, _, _ in products if str(product.category or "").strip()}
-    rules = {
-        rule.category.casefold(): rule
+    region = "gujarat" if str(location.get("state") or "").casefold() == "gujarat" else "outside_gujarat"
+    rules: dict[str, DeliveryChargeRule] = {}
+    if categories:
         for rule in database.scalars(
-            select(DeliveryChargeRule).where(DeliveryChargeRule.enabled.is_(True), func.lower(DeliveryChargeRule.category).in_([c.casefold() for c in categories]))
-        ).all()
-    } if categories else {}
+            select(DeliveryChargeRule).where(
+                DeliveryChargeRule.enabled.is_(True),
+                func.lower(DeliveryChargeRule.category).in_([c.casefold() for c in categories]),
+                DeliveryChargeRule.region.in_(["all", region]),
+            )
+        ).all():
+            key = rule.category.casefold()
+            if key not in rules or rule.region == region:
+                rules[key] = rule
     breakdown: list[dict[str, object]] = []
     total = ZERO
     for category in sorted(categories):
@@ -195,10 +202,11 @@ def _delivery_for_items(
             charge *= sum(item.quantity for _, item in category_items)
         charge = charge.quantize(Decimal("0.01"))
         total += charge
-        breakdown.append({"category": rule.category, "charge": str(charge), "charge_type": rule.charge_type})
+        breakdown.append({"category": rule.category, "region": rule.region, "charge": str(charge), "charge_type": rule.charge_type})
     if not breakdown:
         total = Decimal(str(location["delivery_charge"])).quantize(Decimal("0.01"))
         breakdown = [{"category": "Default PIN-based delivery", "charge": str(total), "charge_type": "fixed"}]
+    location["message"] = f"{location['state']}: packaging and delivery charge is ₹{total.quantize(Decimal('0.01'))}."
     return location, total.quantize(Decimal("0.01")), breakdown
 
 

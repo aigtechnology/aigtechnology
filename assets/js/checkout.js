@@ -339,6 +339,7 @@ async function initCheckoutPage() {
       deliveryStatus.dataset.state = "success";
       const validated = await validateCart(cart, postalCode);
       renderSummary(summary, validated);
+      deliveryStatus.textContent = validated.delivery_message || deliveryStatus.textContent;
     } catch (error) {
       setDeliveryError(error.message || "We could not verify this PIN code.");
     }

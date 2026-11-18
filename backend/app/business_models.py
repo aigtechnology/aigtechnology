@@ -313,7 +313,8 @@ class DeliveryChargeRule(Base):
     __tablename__ = "delivery_charge_rules"
 
     id = Column(Integer, primary_key=True)
-    category = Column(String(80), unique=True, nullable=False, index=True)
+    category = Column(String(80), nullable=False, index=True)
+    region = Column(String(24), nullable=False, default="all", server_default="all")
     charge_amount = Column(Numeric(12, 2), nullable=False, default=0)
     charge_type = Column(String(20), nullable=False, default="fixed")
     free_delivery = Column(Boolean, nullable=False, default=False)
@@ -321,6 +322,7 @@ class DeliveryChargeRule(Base):
     enabled = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    __table_args__ = (UniqueConstraint("category", "region", name="uq_delivery_charge_rule_category_region"),)
 
 
 class WebsiteRefund(Base):

@@ -491,11 +491,17 @@ th { color: var(--text-secondary); font-size: .86rem; background: var(--backgrou
   .home-hero .lead { font-size: .96rem; }
   .home-hero .hero-actions .button { min-height: 46px; }
   .home-hero__media-controls { right: 16px; bottom: 14px; }
+  .homepage-featured-section { display: none; }
   .mobile-collections { display: block; padding-top: 30px; }
   .mobile-collection + .mobile-collection { margin-top: 30px; }
   .mobile-collections .section-heading--compact { align-items: center; margin-bottom: 12px; }
   .mobile-collections .section-heading--compact h2 { font-size: 1.35rem; }
   .mobile-collections .section-heading--compact a { white-space: nowrap; font-size: .82rem; font-weight: 750; }
+  .mobile-collections .product-rail {
+    grid-auto-columns: minmax(0, min(82vw, 320px));
+    padding-inline: max(0px, calc((100% - min(82vw, 320px)) / 2));
+    scroll-padding-inline: max(0px, calc((100% - min(82vw, 320px)) / 2));
+  }
   .promo-section:not([hidden]) { display: block; padding-block: 28px; }
   .promo-rail { grid-auto-columns: 86vw; scroll-padding-inline: 7vw; }
   .promo-card { grid-template-columns: 1fr; min-height: 0; }

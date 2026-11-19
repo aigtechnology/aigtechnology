@@ -34,31 +34,6 @@ function renderMobileCategoryRail() {
   }));
 }
 
-function setupMobileHomepageOrder() {
-  const collections = document.querySelector("#mobile-collections");
-  const categoryRail = byId("mobile-category-nav");
-  const hero = document.querySelector(".home-hero");
-  if (!collections || !categoryRail || !hero || !collections.parentElement) return;
-
-  const originalParent = collections.parentElement;
-  const originalPosition = document.createComment("mobile-collections-original-position");
-  originalParent.insertBefore(originalPosition, collections);
-  const media = window.matchMedia("(max-width: 767px)");
-
-  const updateOrder = () => {
-    if (media.matches) {
-      // Keep the existing category rail first, then show the existing catalogue.
-      categoryRail.closest(".mobile-shopping-tools")?.after(collections);
-    } else {
-      originalPosition.parentNode?.insertBefore(collections, originalPosition.nextSibling);
-    }
-  };
-
-  updateOrder();
-  if (typeof media.addEventListener === "function") media.addEventListener("change", updateOrder);
-  else media.addListener(updateOrder);
-}
-
 function renderProductCategories(categories) {
   productCategories = [...new Set(categories
     .map(category => typeof category === "string" ? category.trim() : "")
@@ -615,7 +590,7 @@ function renderPromotions(settings) {
     rail._promoTimer = window.setInterval(() => {
       if (document.hidden || rail.matches(":hover") || rail.matches(":focus-within")) return;
       rail.scrollBy({ left: cardStep(), behavior: "smooth" });
-    }, 900);
+    }, 4200);
   }
   section.hidden = false;
 }
@@ -1073,7 +1048,6 @@ async function initHomepage() {
 setupAnnouncement();
 setupNavigation();
 setupMobileSearch();
-setupMobileHomepageOrder();
 setupMobileBottomNav();
 setupHomeHero();
 setupReveals();

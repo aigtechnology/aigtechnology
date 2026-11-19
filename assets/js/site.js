@@ -34,6 +34,36 @@ function renderMobileCategoryRail() {
   }));
 }
 
+function setupMobileHomepageOrder() {
+  const collections = document.querySelector("#mobile-collections");
+  const categoryRail = byId("mobile-category-nav");
+  const hero = document.querySelector(".home-hero");
+  if (!collections || !categoryRail || !hero || !collections.parentElement) return;
+
+  const originalParent = collections.parentElement;
+  const originalPosition = document.createComment("mobile-collections-original-position");
+  originalParent.insertBefore(originalPosition, collections);
+  const originalHeroParent = hero.parentElement;
+  const originalHeroPosition = document.createComment("mobile-hero-original-position");
+  originalHeroParent?.insertBefore(originalHeroPosition, hero);
+  const media = window.matchMedia("(max-width: 767px)");
+
+  const updateOrder = () => {
+    if (media.matches) {
+      const shoppingTools = categoryRail.closest(".mobile-shopping-tools");
+      shoppingTools?.after(hero);
+      hero.after(collections);
+    } else {
+      originalPosition.parentNode?.insertBefore(collections, originalPosition.nextSibling);
+      originalHeroPosition.parentNode?.insertBefore(hero, originalHeroPosition.nextSibling);
+    }
+  };
+
+  updateOrder();
+  if (typeof media.addEventListener === "function") media.addEventListener("change", updateOrder);
+  else media.addListener(updateOrder);
+}
+
 function renderProductCategories(categories) {
   productCategories = [...new Set(categories
     .map(category => typeof category === "string" ? category.trim() : "")
@@ -1048,6 +1078,7 @@ async function initHomepage() {
 setupAnnouncement();
 setupNavigation();
 setupMobileSearch();
+setupMobileHomepageOrder();
 setupMobileBottomNav();
 setupHomeHero();
 setupReveals();

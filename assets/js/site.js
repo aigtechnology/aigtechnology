@@ -577,11 +577,14 @@ async function initMobileCollections(products = null) {
   try {
     const catalogue = products || await getProducts({ max: 200 });
     const available = catalogue.filter(product => product.sku && Number(product.price) > 0 && Number(product.stockQuantity) > 0);
-    const best = [...available].sort((left, right) => Number(right.featured) - Number(left.featured) || String(left.name).localeCompare(String(right.name))).slice(0, 8);
-    const accessories = available.filter(product => /accessor|component|keyboard|mouse|storage|ram|ssd|network/i.test(`${product.category || ""} ${product.name || ""}`)).slice(0, 8);
-    renderProductList(collections.querySelector('[data-collection-rail="best"]'), best, "No available products are listed yet.");
+    const normalizeCategory = product => String(product.category || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const desktopComputers = available.filter(product => ["desktop computers", "desktop computer"].includes(normalizeCategory(product))).slice(0, 8);
+    const onlyCpu = available.filter(product => ["only cpu", "cpu"].includes(normalizeCategory(product))).slice(0, 8);
+    const accessories = available.filter(product => /accessor|component|keyboard|mouse|storage|ram|ssd|network/i.test(`${normalizeCategory(product)} ${String(product.name || "")}`)).slice(0, 8);
+    renderProductList(collections.querySelector('[data-collection-rail="desktop"]'), desktopComputers, "No desktop computers are available right now.");
+    renderProductList(collections.querySelector('[data-collection-rail="cpu"]'), onlyCpu, "No CPU products are available right now.");
     renderProductList(collections.querySelector('[data-collection-rail="accessories"]'), accessories, "No accessories are available right now.");
-    if (!best.length && !accessories.length) collections.hidden = true;
+    if (!desktopComputers.length && !onlyCpu.length && !accessories.length) collections.hidden = true;
   } catch (error) {
     collections.hidden = true;
     console.warn("Mobile product collections could not be loaded:", error);
